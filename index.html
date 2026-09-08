@@ -1,0 +1,1629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Throttle — Dynamic Autonomy Control for Onchain Agents</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Grotesk:ital@1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#15170f;
+    --cream:#f4f3e6;
+    --panel:#fbfbf1;
+    --forest:#21391f;
+    --forest-dark:#152c14;
+    --lime:#d6f45c;
+    --lime-dim:#eef8c9;
+    --amber:#e2982f;
+    --rust:#b5432a;
+    --line:#dcdac6;
+    --muted:#6b6e5c;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--cream);
+    color:var(--ink);
+    font-family:'Inter', sans-serif;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.5;
+  }
+  h1,h2,h3,h4,h5,h6, .display{
+    font-family:'Space Grotesk', sans-serif;
+    letter-spacing:-0.01em;
+  }
+  a{color:inherit; text-decoration:none;}
+  img{max-width:100%; display:block;}
+  .wrap{max-width:1120px; margin:0 auto; padding:0 32px;}
+  ::selection{background:var(--lime); color:var(--ink);}
+  :focus-visible{outline:2px solid var(--forest); outline-offset:3px; border-radius:4px;}
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important;}
+  }
+
+  /* ---------- nav ---------- */
+  header{
+    position:sticky; top:0; z-index:50;
+    padding:16px 20px;
+    backdrop-filter: blur(8px);
+    background: rgba(244, 243, 230, 0.85);
+  }
+  .navbar{
+    max-width:1120px; margin:0 auto;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:100px;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 14px 10px 20px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+  }
+  .brand{display:flex; align-items:center; gap:10px; font-weight:600; font-size:18px;}
+  .brand-mark{
+    width:30px; height:30px; border-radius:8px;
+    background:var(--forest);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .brand-mark svg{width:16px; height:16px;}
+  nav ul{list-style:none; display:flex; gap:28px;}
+  nav a{font-size:14.5px; color:var(--ink); opacity:0.75; transition:opacity .15s;}
+  nav a:hover{opacity:1;}
+  .nav-links{display:flex; align-items:center; gap:20px;}
+  .btn{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:10px 20px; border-radius:100px;
+    font-size:14px; font-weight:500;
+    white-space:nowrap;
+    cursor:pointer;
+    transition:all 0.15s ease;
+    border:none;
+    font-family:inherit;
+  }
+  .btn-filled{background:var(--forest); color:#fff; border:1px solid var(--forest);}
+  .btn-filled:hover{background:var(--forest-dark); transform:translateY(-1px);}
+  .btn-outline{background:transparent; color:var(--forest); border:1px solid var(--forest);}
+  .btn-outline:hover{background:var(--forest); color:#fff;}
+  .btn svg{width:14px; height:14px;}
+
+  .api-status-badge{
+    display:inline-flex; align-items:center; gap:7px;
+    font-size:12px; padding:5px 12px; border-radius:100px;
+    border:1px solid var(--line); background:#fff;
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:500;
+  }
+  .api-status-dot{
+    width:8px; height:8px; border-radius:50%;
+    background:#10b981;
+    box-shadow:0 0 0 0 rgba(16,185,129,0.5);
+    animation:pulse 2s infinite;
+  }
+  .api-status-dot.offline{
+    background:var(--amber);
+    box-shadow:none;
+    animation:none;
+  }
+
+  /* ---------- hero ---------- */
+  .hero{padding:72px 0 0; text-align:center;}
+  .hero h1{
+    font-size:clamp(38px, 6vw, 68px);
+    font-weight:600;
+    line-height:1.08;
+    max-width:880px;
+    margin:0 auto;
+  }
+  .accent{
+    font-style:italic;
+    background:var(--lime);
+    padding:0 10px 4px;
+    display:inline-block;
+    border-radius:6px;
+    transform:rotate(-0.6deg);
+  }
+  .hero p.sub{
+    max-width:640px; margin:26px auto 0;
+    color:var(--muted); font-size:16.5px; line-height:1.65;
+  }
+  .trust-line{
+    margin:32px auto 0;
+    display:flex; align-items:center; justify-content:center; gap:14px;
+    flex-wrap:wrap;
+  }
+  .partner-pills{display:flex; gap:8px; flex-wrap:wrap; justify-content:center;}
+  .partner-pill{
+    border:1px solid var(--line); background:var(--panel);
+    padding:6px 14px; border-radius:100px; font-size:13px; font-weight:500;
+  }
+  .trust-label{font-size:12.5px; color:var(--muted); letter-spacing:0.03em;}
+  .hero-cta{margin:32px 0 48px; display:flex; gap:14px; justify-content:center; flex-wrap:wrap;}
+
+  /* ---------- authority ladder panel (LIVE) ---------- */
+  .ladder-panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:24px;
+    padding:28px 28px 24px;
+    max-width:1020px;
+    margin:0 auto;
+    box-shadow:0 12px 32px rgba(33,57,31,0.04);
+  }
+  .ladder-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding-bottom:20px; text-align:left;
+    flex-wrap:wrap; gap:12px;
+  }
+  .ladder-head h3{font-size:17px; font-weight:600;}
+  .ladder-head .count{color:var(--muted); font-weight:400; font-size:14px;}
+  .live-dot{
+    display:inline-flex; align-items:center; gap:7px;
+    font-size:12.5px; color:var(--muted); border:1px solid var(--line);
+    padding:5px 12px; border-radius:100px; background:var(--cream);
+  }
+  .live-dot i{
+    width:7px; height:7px; border-radius:50%; background:var(--lime);
+    box-shadow:0 0 0 0 rgba(214,244,92,0.6);
+    animation:pulse 2s infinite;
+  }
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(214,244,92,0.55);}
+    70%{box-shadow:0 0 0 8px rgba(214,244,92,0);}
+    100%{box-shadow:0 0 0 0 rgba(214,244,92,0);}
+  }
+
+  /* Telemetry mini strip */
+  .telemetry-strip{
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:12px;
+    margin-bottom:20px; text-align:left;
+  }
+  .telemetry-card{
+    background:#fff; border:1px solid var(--line); border-radius:12px;
+    padding:12px 14px;
+  }
+  .telemetry-card .card-lbl{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; font-weight:600;}
+  .telemetry-card .card-val{font-size:18px; font-weight:600; font-family:'Space Grotesk',sans-serif; margin-top:3px;}
+  .telemetry-card .card-sub{font-size:11px; color:var(--muted); margin-top:2px;}
+
+  .ladder{
+    border:1px solid var(--line); border-radius:16px;
+    overflow:hidden; text-align:left;
+  }
+  .rung{
+    display:grid; grid-template-columns:90px 1fr 220px;
+    align-items:center; gap:16px;
+    padding:14px 20px;
+    border-bottom:1px solid var(--line);
+    font-size:14px;
+    background:#fff;
+    transition:all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .rung:last-child{border-bottom:none;}
+  .rung .lvl{font-family:'Space Grotesk', sans-serif; font-weight:600; color:var(--muted); transition:color 0.2s;}
+  .rung .name{font-weight:500;}
+  .rung .desc{color:var(--muted); font-size:12.5px; display:block; margin-top:2px;}
+  .rung .state{
+    justify-self:end;
+    font-size:12px; font-weight:600; padding:5px 12px; border-radius:100px;
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:'Space Grotesk', sans-serif;
+  }
+  .state i{width:6px; height:6px; border-radius:50%;}
+  .state.ok{background:var(--lime-dim); color:#3a4a1c;}
+  .state.ok i{background:var(--lime); border:2px solid #b9dc4c;}
+  .state.watch{background:#fbeed7; color:#7a4c0e;}
+  .state.watch i{background:var(--amber);}
+  .state.stop{background:#f5ded8; color:#7a2c1a;}
+  .state.stop i{background:var(--rust);}
+
+  /* Dynamic Active Rung Highlights */
+  .rung.current{
+    background:var(--lime-dim);
+    border-left:4px solid var(--forest);
+    padding-left:16px;
+  }
+  .rung.current .lvl{color:var(--forest); font-weight:700;}
+  .rung.current.current-watch{
+    background:#fbeed7;
+    border-left:4px solid var(--amber);
+  }
+  .rung.current.current-stop{
+    background:#f5ded8;
+    border-left:4px solid var(--rust);
+  }
+
+  /* Scenario buttons bar */
+  .scenario-bar{
+    margin-top:20px;
+    padding-top:18px;
+    border-top:1px dashed var(--line);
+    display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:12px;
+  }
+  .scenario-label{
+    font-size:12.5px; font-weight:600; color:var(--forest);
+    display:flex; align-items:center; gap:6px;
+  }
+  .scenario-btn-group{display:flex; gap:8px; flex-wrap:wrap;}
+  .pill-btn{
+    background:#fff; border:1px solid var(--line); border-radius:100px;
+    padding:6px 14px; font-size:12.5px; font-weight:500; color:var(--ink);
+    cursor:pointer; transition:all 0.15s ease;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .pill-btn:hover{
+    background:var(--cream);
+    border-color:var(--forest);
+    transform:translateY(-1px);
+  }
+  .pill-btn.active{
+    background:var(--forest);
+    color:#fff;
+    border-color:var(--forest);
+  }
+  .pill-btn i{width:6px; height:6px; border-radius:50%;}
+  .pill-btn.b-green i{background:#10b981;}
+  .pill-btn.b-yellow i{background:var(--amber);}
+  .pill-btn.b-red i{background:var(--rust);}
+
+  /* ---------- interactive proposal sandbox ---------- */
+  .sandbox-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:20px;
+    padding:32px; margin-top:36px; text-align:left;
+  }
+  .sandbox-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;}
+  .sandbox-head h4{font-size:18px; font-weight:600;}
+  .sandbox-form{display:grid; grid-template-columns:repeat(4, 1fr) auto; gap:14px; align-items:end;}
+  .form-group label{display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px;}
+  .form-group select, .form-group input{
+    width:100%; padding:10px 14px; border-radius:10px; border:1px solid var(--line);
+    background:#fff; font-family:'Space Grotesk', sans-serif; font-size:14px; color:var(--ink);
+    outline:none; transition:border-color 0.15s;
+  }
+  .form-group select:focus, .form-group input:focus{border-color:var(--forest);}
+
+  /* Sandbox evaluation result box */
+  .sandbox-result{
+    margin-top:20px; background:#fff; border:1px solid var(--line); border-radius:14px;
+    padding:20px; display:none; animation:fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+  .sr-header{display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); padding-bottom:12px; margin-bottom:14px;}
+  .sr-verdict{font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px;}
+  .sr-factors{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;}
+  .sr-factor-tag{
+    background:var(--panel); border:1px solid var(--line); border-radius:100px;
+    padding:4px 10px; font-size:12px; font-family:'JetBrains Mono', monospace;
+  }
+  .sr-factor-tag.penalty{background:#fdf2ee; color:var(--rust); border-color:#f5ded8;}
+
+  /* ---------- section shell ---------- */
+  section{padding:96px 0;}
+  .eyebrow{
+    font-size:13px; color:var(--forest); font-weight:600;
+    margin-bottom:14px; display:flex; align-items:center; gap:8px;
+  }
+  .eyebrow::before{content:''; width:16px; height:1.5px; background:var(--forest);}
+  .section-head{max-width:640px; margin-bottom:48px;}
+  .section-head h2{font-size:clamp(28px,3.6vw,38px); font-weight:600; line-height:1.15;}
+  .section-head p{color:var(--muted); font-size:16px; margin-top:14px; line-height:1.65;}
+
+  /* ---------- overview ---------- */
+  .overview{background:var(--panel); border-top:1px solid var(--line); border-bottom:1px solid var(--line);}
+  .overview-grid{display:grid; grid-template-columns:1.1fr 0.9fr; gap:64px; align-items:center;}
+  .overview blockquote{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:clamp(22px,2.6vw,30px);
+    line-height:1.35; font-weight:500;
+  }
+  .overview blockquote .accent{font-size:inherit;}
+  .stat-list{display:flex; flex-direction:column; gap:0;}
+  .stat-row{
+    display:flex; justify-content:space-between; align-items:baseline;
+    padding:18px 0; border-bottom:1px solid var(--line);
+  }
+  .stat-row:first-child{padding-top:0;}
+  .stat-row .num{font-family:'Space Grotesk', sans-serif; font-size:22px; font-weight:600;}
+  .stat-row .label{color:var(--muted); font-size:13.5px; max-width:220px; text-align:right;}
+
+  /* ---------- problem (with interactive comparison slider) ---------- */
+  .slider-control{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:16px 20px; margin-bottom:24px; display:flex; align-items:center; gap:20px;
+    flex-wrap:wrap;
+  }
+  .slider-control span{font-size:13px; font-weight:600;}
+  .slider-control input[type=range]{
+    flex:1; min-width:180px; accent-color:var(--forest); cursor:pointer;
+  }
+  .slider-val{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px;
+    background:var(--cream); padding:4px 12px; border-radius:100px; border:1px solid var(--line);
+  }
+
+  .problem-compare{
+    display:grid; grid-template-columns:1fr 1fr; gap:0;
+    border:1px solid var(--line); border-radius:20px; overflow:hidden;
+  }
+  .compare-col{padding:32px;}
+  .compare-col.left{background:#fdf2ee; border-right:1px solid var(--line);}
+  .compare-col.right{background:var(--lime-dim);}
+  .compare-tag{
+    font-size:12px; font-weight:600; padding:4px 12px; border-radius:100px;
+    display:inline-block; margin-bottom:18px;
+  }
+  .compare-col.left .compare-tag{background:#f5ded8; color:#7a2c1a;}
+  .compare-col.right .compare-tag{background:var(--lime); color:#2c3812;}
+  .compare-col h4{font-size:19px; font-weight:600; margin-bottom:10px; font-family:'Space Grotesk',sans-serif;}
+  .compare-col p{color:var(--ink); opacity:0.75; font-size:14.5px; line-height:1.6; margin-bottom:20px;}
+  .trace{
+    background:var(--ink); color:#e9e8d8; border-radius:12px; padding:16px 18px;
+    font-family:'Space Grotesk',sans-serif; font-size:13px; line-height:1.9;
+  }
+  .trace .k{opacity:0.55; display:inline-block; width:65px;}
+  .trace .v-bad{color:#f39a80; font-weight:600;}
+  .trace .v-good{color:var(--lime); font-weight:600;}
+
+  /* ---------- solution ---------- */
+  .pillars{display:grid; grid-template-columns:repeat(3,1fr); gap:20px;}
+  .pillar{
+    background:var(--panel); border:1px solid var(--line); border-radius:18px;
+    padding:28px; border-left:4px solid var(--forest);
+    transition:transform 0.2s ease;
+  }
+  .pillar:hover{transform:translateY(-2px);}
+  .pillar.risk{border-left-color:var(--rust);}
+  .pillar.trust{border-left-color:var(--amber);}
+  .pillar.authority{border-left-color:var(--forest);}
+  .pillar .tag{font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;}
+  .pillar h4{font-size:20px; margin:10px 0 12px; font-family:'Space Grotesk',sans-serif;}
+  .pillar p{color:var(--muted); font-size:14.5px; line-height:1.65;}
+
+  /* ---------- architecture ---------- */
+  .architecture{background:var(--forest); color:#f2f1e4;}
+  .architecture .eyebrow{color:var(--lime);}
+  .architecture .eyebrow::before{background:var(--lime);}
+  .architecture .section-head p{color:#c7cbb8;}
+  .flow{
+    display:flex; align-items:stretch; gap:0; flex-wrap:wrap;
+    border:1px solid rgba(242,241,228,0.18); border-radius:20px; overflow:hidden;
+  }
+  .flow-node{
+    flex:1 1 0; min-width:150px; padding:26px 20px;
+    border-right:1px solid rgba(242,241,228,0.18);
+    background:rgba(255,255,255,0.03);
+    transition:all 0.3s ease;
+  }
+  .flow-node:last-child{border-right:none;}
+  .flow-node.active-stage{
+    background:rgba(214,244,92,0.15);
+    border-top:3px solid var(--lime);
+  }
+  .flow-node .fn-index{font-size:12px; color:var(--lime); font-weight:600; margin-bottom:10px; font-family:'Space Grotesk',sans-serif;}
+  .flow-node h5{font-size:15.5px; font-weight:600; margin-bottom:8px;}
+  .flow-node p{font-size:12.5px; color:#c7cbb8; line-height:1.55;}
+  .floor-line{
+    text-align:center; margin-top:28px; padding:20px;
+    border:1px dashed rgba(242,241,228,0.3); border-radius:14px;
+    font-family:'Space Grotesk',sans-serif; font-size:15px; color:#f2f1e4;
+  }
+  .floor-line b{color:var(--lime);}
+  .gate-note{
+    display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:20px;
+  }
+  .gate-card{
+    background:rgba(255,255,255,0.04); border:1px solid rgba(242,241,228,0.15);
+    border-radius:14px; padding:18px 20px;
+  }
+  .gate-card .gate-label{font-size:11.5px; color:var(--lime); font-weight:600; letter-spacing:0.04em; margin-bottom:6px;}
+  .gate-card p{font-size:13px; color:#c7cbb8; line-height:1.55;}
+
+  /* ---------- live action feed & events ---------- */
+  .feed-section{
+    background:var(--panel); border-top:1px solid var(--line); border-bottom:1px solid var(--line);
+    padding:80px 0;
+  }
+  .feed-table-wrap{
+    background:#fff; border:1px solid var(--line); border-radius:16px; overflow:hidden;
+    margin-top:24px;
+  }
+  .feed-table{
+    width:100%; border-collapse:collapse; text-align:left; font-size:13.5px;
+  }
+  .feed-table th{
+    background:var(--cream); padding:12px 18px; font-weight:600; font-size:12px;
+    color:var(--muted); text-transform:uppercase; letter-spacing:0.03em; border-bottom:1px solid var(--line);
+  }
+  .feed-table td{
+    padding:14px 18px; border-bottom:1px solid var(--line);
+  }
+  .feed-table tr:last-child td{border-bottom:none;}
+  .feed-table tr:hover td{background:#fafaf6;}
+  .feed-badge{
+    display:inline-flex; align-items:center; gap:5px;
+    padding:3px 9px; border-radius:100px; font-size:11.5px; font-weight:600;
+    font-family:'Space Grotesk',sans-serif;
+  }
+  .feed-badge.b-l0{background:var(--lime-dim); color:#21391f;}
+  .feed-badge.b-l3{background:#fbeed7; color:#7a4c0e;}
+  .feed-badge.b-l4{background:#fde8d8; color:#9a3412;}
+  .feed-badge.b-l5{background:#f5ded8; color:#7a2c1a;}
+
+  /* ---------- how it works ---------- */
+  .steps{border-top:1px solid var(--line);}
+  .step{
+    display:grid; grid-template-columns:64px 1fr; gap:24px;
+    padding:30px 0; border-bottom:1px solid var(--line);
+  }
+  .step .step-num{
+    font-family:'Space Grotesk',sans-serif; font-size:26px; font-weight:600;
+    color:var(--line); line-height:1;
+  }
+  .step h4{font-size:17.5px; font-weight:600; margin-bottom:6px; font-family:'Space Grotesk',sans-serif;}
+  .step p{color:var(--muted); font-size:14.5px; line-height:1.6; max-width:640px;}
+  .step .tagged{
+    display:inline-block; margin-top:10px; font-size:12px; color:var(--forest);
+    background:var(--lime-dim); padding:3px 10px; border-radius:100px; font-weight:500;
+  }
+
+  /* ---------- cta band ---------- */
+  .cta-band{
+    background:var(--lime); border-radius:24px; text-align:center;
+    padding:56px 32px; margin:0 32px;
+    max-width:1120px; margin-left:auto; margin-right:auto;
+  }
+  .cta-band h3{font-size:clamp(24px,3vw,32px); font-weight:600; margin-bottom:14px;}
+  .cta-band p{color:#3a4a1c; max-width:480px; margin:0 auto 28px; font-size:15px;}
+  .cta-band .btn-filled{background:var(--forest); border-color:var(--forest);}
+
+  /* ---------- footer ---------- */
+  footer{padding:64px 0 32px; border-top:1px solid var(--line); margin-top:40px;}
+  .footer-grid{
+    display:grid; grid-template-columns:1.4fr 1fr 1fr 1fr; gap:40px;
+    padding-bottom:48px;
+  }
+  .footer-brand .brand{margin-bottom:14px;}
+  .footer-brand p{color:var(--muted); font-size:14px; max-width:260px; line-height:1.6;}
+  .footer-col h6{font-size:13px; font-weight:600; margin-bottom:16px; color:var(--ink);}
+  .footer-col ul{list-style:none; display:flex; flex-direction:column; gap:10px;}
+  .footer-col a{font-size:14px; color:var(--muted);}
+  .footer-col a:hover{color:var(--ink);}
+  .footer-bottom{
+    display:flex; justify-content:space-between; align-items:center;
+    padding-top:28px; border-top:1px solid var(--line);
+    font-size:13px; color:var(--muted); flex-wrap:wrap; gap:12px;
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width:860px){
+    .nav-links{display:none;}
+    .overview-grid{grid-template-columns:1fr; gap:36px;}
+    .problem-compare{grid-template-columns:1fr;}
+    .compare-col.left{border-right:none; border-bottom:1px solid var(--line);}
+    .pillars{grid-template-columns:1fr;}
+    .flow-node{border-right:none; border-bottom:1px solid rgba(242,241,228,0.18);}
+    .gate-note{grid-template-columns:1fr;}
+    .rung{grid-template-columns:56px 1fr; }
+    .rung .state{display:none;}
+    .telemetry-strip{grid-template-columns:1fr 1fr;}
+    .sandbox-form{grid-template-columns:1fr;}
+    .footer-grid{grid-template-columns:1fr 1fr; gap:32px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="navbar">
+    <div class="brand">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 18L10 6L14 14L20 4" stroke="#d6f45c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      Throttle
+    </div>
+    <div class="nav-links">
+      <nav>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#problem">Problem</a></li>
+          <li><a href="#solution">Solution</a></li>
+          <li><a href="#architecture">Architecture</a></li>
+          <li><a href="#evaluator">Sandbox</a></li>
+          <li><a href="#activity-feed">Live Feed</a></li>
+        </ul>
+      </nav>
+      <div id="connectionStatus" class="api-status-badge" title="Throttle Controller Status">
+        <span class="api-status-dot" id="apiDot"></span>
+        <span id="apiStatusText">Controller: Connecting...</span>
+      </div>
+      <a href="https://github.com/AGAkodi/Throttle" target="_blank" rel="noopener noreferrer" class="btn btn-filled">Repository</a>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap">
+      <h1>Let agents act freely, <span class="accent">until they shouldn't.</span></h1>
+      <p class="sub">
+        Throttle is an external authority controller for long-running onchain agents.
+        It scores every proposed payment for risk, checks it against the agent's own
+        behavioral baseline, and decides — in real time — how much the agent is allowed
+        to do right now.
+      </p>
+
+      <div class="hero-cta">
+        <a href="#evaluator" class="btn btn-filled">Test evaluation sandbox</a>
+        <a href="#architecture" class="btn btn-outline">
+          See the architecture
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+
+      <div class="trust-line">
+        <span class="trust-label">Built for KeeperHub × DoraHacks — live integration with</span>
+        <div class="partner-pills">
+          <span class="partner-pill">Daydreams</span>
+          <span class="partner-pill">TaskMarket</span>
+          <span class="partner-pill">KeeperHub</span>
+        </div>
+      </div>
+
+      <div style="height:48px"></div>
+
+      <!-- LIVE AUTHORITY LADDER PANEL -->
+      <div class="ladder-panel" id="ladderPanel">
+        <div class="ladder-head">
+          <div>
+            <h3>Live authority state <span class="count" id="agentNameLabel">— daydreams-agent-alpha</span></h3>
+          </div>
+          <span class="live-dot" id="liveHeartbeat"><i></i><span id="heartbeatText">evaluating via controller</span></span>
+        </div>
+
+        <!-- Real-time Agent Telemetry Strip -->
+        <div class="telemetry-strip">
+          <div class="telemetry-card">
+            <div class="card-lbl">Trust Score</div>
+            <div class="card-val" id="trustScoreVal">85%</div>
+            <div class="card-sub" id="trustSub">24h half-life decaying</div>
+          </div>
+          <div class="telemetry-card">
+            <div class="card-lbl">Baseline Mean</div>
+            <div class="card-val" id="baselineMeanVal">$1.50</div>
+            <div class="card-sub" id="baselineKnownVal">3 known addresses</div>
+          </div>
+          <div class="telemetry-card">
+            <div class="card-lbl">Hourly Spend</div>
+            <div class="card-val" id="hourlySpendVal">$0.00</div>
+            <div class="card-sub" id="hourlyCapVal">Cap: $150.00 / hr</div>
+          </div>
+          <div class="telemetry-card">
+            <div class="card-lbl">Authority Level</div>
+            <div class="card-val" id="activeLevelVal" style="color:var(--forest);">Level 0</div>
+            <div class="card-sub" id="activeStatusVal">Full Autonomy</div>
+          </div>
+        </div>
+
+        <!-- 6-Level Ladder -->
+        <div class="ladder" id="ladderContainer">
+          <div class="rung current" id="rung-0" data-level="0">
+            <span class="lvl">L0</span>
+            <span><span class="name">Full autonomy</span><span class="desc">No additional intervention — normal operations</span></span>
+            <span class="state ok" id="state-0"><i></i>current</span>
+          </div>
+          <div class="rung" id="rung-1" data-level="1">
+            <span class="lvl">L1</span>
+            <span><span class="name">Logged autonomy</span><span class="desc">Executes normally, enhanced audit detail recorded</span></span>
+            <span class="state ok" id="state-1"><i></i>available</span>
+          </div>
+          <div class="rung" id="rung-2" data-level="2">
+            <span class="lvl">L2</span>
+            <span><span class="name">Enhanced monitoring</span><span class="desc">Executes, re-evaluated continuously against baseline</span></span>
+            <span class="state ok" id="state-2"><i></i>available</span>
+          </div>
+          <div class="rung" id="rung-3" data-level="3">
+            <span class="lvl">L3</span>
+            <span><span class="name">Restricted scope</span><span class="desc">Reduced limits (25% spend), verified targets only</span></span>
+            <span class="state watch" id="state-3"><i></i>held in reserve</span>
+          </div>
+          <div class="rung" id="rung-4" data-level="4">
+            <span class="lvl">L4</span>
+            <span><span class="name">Approval required</span><span class="desc">Paused pending human sign-off via KeeperHub</span></span>
+            <span class="state watch" id="state-4"><i></i>held in reserve</span>
+          </div>
+          <div class="rung" id="rung-5" data-level="5">
+            <span class="lvl">L5</span>
+            <span><span class="name">Frozen</span><span class="desc">Hard breach — execution halted entirely</span></span>
+            <span class="state stop" id="state-5"><i></i>held in reserve</span>
+          </div>
+        </div>
+
+        <!-- Live Scenario Injection Bar -->
+        <div class="scenario-bar">
+          <span class="scenario-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Simulate transition:
+          </span>
+          <div class="scenario-btn-group">
+            <button class="pill-btn b-green" onclick="triggerScenario('seed')"><i></i>01 Reset Baseline (L0)</button>
+            <button class="pill-btn b-yellow" onclick="triggerScenario('drift')"><i></i>02 Inject Drift (L3)</button>
+            <button class="pill-btn b-yellow" onclick="triggerScenario('approval')"><i></i>03 Trigger Approval (L4)</button>
+            <button class="pill-btn b-red" onclick="triggerScenario('violation')"><i></i>04 Hard Breach (L5)</button>
+            <button class="pill-btn b-green" onclick="triggerScenario('recover')"><i></i>05 Clean Streak Recovery</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OVERVIEW -->
+  <section class="overview" id="overview">
+    <div class="wrap overview-grid">
+      <div>
+        <div class="eyebrow">Overview</div>
+        <blockquote>
+          Static permission thresholds can't tell whether today's transaction is
+          <span class="accent">normal or the start of a problem.</span>
+          Throttle replaces the fixed limit with a decision that adapts to what
+          the agent has actually been doing.
+        </blockquote>
+      </div>
+      <div class="stat-list">
+        <div class="stat-row">
+          <span class="num">6</span>
+          <span class="label">distinct authority levels, from full autonomy to frozen</span>
+        </div>
+        <div class="stat-row">
+          <span class="num">2</span>
+          <span class="label">independent gates the agent's payment has to clear</span>
+        </div>
+        <div class="stat-row">
+          <span class="num">1</span>
+          <span class="label">hard, deterministic wallet floor that no decision can override</span>
+        </div>
+        <div class="stat-row">
+          <span class="num">24h</span>
+          <span class="label">trust half-life — reliability has to be sustained, not banked once</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROBLEM (WITH INTERACTIVE AMOUNT SLIDER) -->
+  <section id="problem">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">The problem</div>
+        <h2>Agents don't fail all at once. They drift.</h2>
+        <p>
+          An agent that behaved safely for its first thousand actions can gradually
+          start moving larger amounts, hitting unfamiliar destinations, or retrying
+          failed calls more often. A fixed dollar limit has no way to tell "normal
+          today" from "suspicious today."
+        </p>
+      </div>
+
+      <!-- Interactive Problem Sandbox Slider -->
+      <div class="slider-control">
+        <span>Test transfer amount:</span>
+        <input type="range" id="problemSlider" min="10" max="1200" step="10" value="980" oninput="updateProblemComparison(this.value)">
+        <span class="slider-val" id="problemSliderVal">$980 USDC</span>
+        <span style="font-size:12px; color:var(--muted); margin-left:auto;">Baseline typical: $1.00 – $5.00</span>
+      </div>
+
+      <div class="problem-compare">
+        <div class="compare-col left">
+          <span class="compare-tag">Static threshold</span>
+          <h4>Same rule, every action</h4>
+          <p>
+            A cap of $1,000 doesn't know this agent has never sent more than $400,
+            never touched this destination, and has retried three times in the
+            last minute.
+          </p>
+          <div class="trace">
+            <div><span class="k">rule</span> transfer &le; $1,000</div>
+            <div><span class="k">action</span> <span id="staticTraceAction">transfer $980 → unknown address</span></div>
+            <div><span class="k">result</span> <span class="v-bad" id="staticTraceResult">approved</span></div>
+          </div>
+        </div>
+        <div class="compare-col right">
+          <span class="compare-tag">Dynamic authority</span>
+          <h4>Same action, read in context</h4>
+          <p>
+            The same transfer is scored against this agent's own baseline —
+            typical size, known destinations, current retry rate — before it's
+            allowed through.
+          </p>
+          <div class="trace">
+            <div><span class="k">baseline</span> $1.00–$5.00 · 3 known destinations</div>
+            <div><span class="k">action</span> <span id="dynamicTraceAction">transfer $980 → unknown address</span></div>
+            <div><span class="k">result</span> <span class="v-good" id="dynamicTraceResult">held for approval</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOLUTION -->
+  <section id="solution" style="background:var(--panel); border-top:1px solid var(--line); border-bottom:1px solid var(--line);">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">The solution</div>
+        <h2>Three scores, kept deliberately separate</h2>
+        <p>
+          Risk, trust, and authority answer different questions and are never
+          collapsed into one number. An agent can be highly trusted and still
+          have a single risky action held back.
+        </p>
+      </div>
+      <div class="pillars">
+        <div class="pillar risk">
+          <span class="tag">Risk</span>
+          <h4>How dangerous is this action?</h4>
+          <p>
+            Scored 0–100 from the proposal itself: amount, destination novelty,
+            protocol familiarity, and current frequency. Every score returns a
+            labeled breakdown, not a bare number.
+          </p>
+        </div>
+        <div class="pillar trust">
+          <span class="tag">Trust</span>
+          <h4>How reliable has this agent been?</h4>
+          <p>
+            Built from the quality of recent behavior, not the volume — violations
+            and drift cost more than clean actions earn. Decays on a 24-hour
+            half-life, so it's never a permanent badge.
+          </p>
+        </div>
+        <div class="pillar authority">
+          <span class="tag">Authority</span>
+          <h4>What is it allowed to do right now?</h4>
+          <p>
+            Combines risk, trust, drift, and hard policy into one of six levels —
+            and moves the agent between them automatically as conditions change.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHITECTURE -->
+  <section class="architecture" id="architecture">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Architecture</div>
+        <h2>The agent proposes. The controller authorizes.<br/>KeeperHub executes.</h2>
+        <p>
+          Throttle never signs anything itself. It decides whether a signature
+          should be requested at all — execution stays entirely inside KeeperHub's
+          Turnkey-backed wallet infrastructure.
+        </p>
+      </div>
+
+      <div class="flow">
+        <div class="flow-node" id="stage-1">
+          <div class="fn-index">01</div>
+          <h5>Daydreams agent</h5>
+          <p>Proposes a payment on TaskMarket — a bid, a claim, a task acceptance.</p>
+        </div>
+        <div class="flow-node" id="stage-2">
+          <div class="fn-index">02</div>
+          <h5>402 challenge received</h5>
+          <p>TaskMarket returns the real amount, payee, and nonce for the payment.</p>
+        </div>
+        <div class="flow-node" id="stage-3">
+          <div class="fn-index">03</div>
+          <h5>Throttle controller</h5>
+          <p>Risk, trust, and drift are evaluated against the agent's own history.</p>
+        </div>
+        <div class="flow-node" id="stage-4">
+          <div class="fn-index">04</div>
+          <h5>KeeperHub signs</h5>
+          <p>Only if authorized — Turnkey produces the EIP-3009 signature.</p>
+        </div>
+        <div class="flow-node" id="stage-5">
+          <div class="fn-index">05</div>
+          <h5>Settlement</h5>
+          <p>Signature is returned to TaskMarket and the payment settles onchain.</p>
+        </div>
+      </div>
+
+      <div class="gate-note">
+        <div class="gate-card">
+          <div class="gate-label">Gate 1 — coarse</div>
+          <p>
+            A PreToolUse hook checks the proposed action at tool-call time, before
+            any payment amount exists yet.
+          </p>
+        </div>
+        <div class="gate-card">
+          <div class="gate-label">Gate 2 — fine-grained</div>
+          <p>
+            Once the real 402 challenge is known, Throttle evaluates the actual
+            amount and destination before a signature is ever requested.
+          </p>
+        </div>
+      </div>
+
+      <div class="floor-line">
+        Even when Throttle says <b>allow</b>, KeeperHub's Turnkey policy — contract
+        allowlist, per-transfer cap, daily cap — remains the final, deterministic floor.
+      </div>
+    </div>
+  </section>
+
+  <!-- INTERACTIVE EVALUATOR SANDBOX -->
+  <section id="evaluator" style="padding:80px 0;">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Interactive Evaluator</div>
+        <h2>Test any proposal through the 5-layer pipeline</h2>
+        <p>
+          Configure a payment below and send it to the Throttle Controller. Watch the pipeline
+          score risk factors, detect drift, and calculate the exact deterministic authority level.
+        </p>
+      </div>
+
+      <div class="sandbox-card">
+        <div class="sandbox-head">
+          <h4>Custom Payment Proposal</h4>
+          <span style="font-size:12px; color:var(--muted); font-family:'JetBrains Mono',monospace;">POST /api/evaluate</span>
+        </div>
+        <div class="sandbox-form">
+          <div class="form-group">
+            <label for="sbAmount">Amount ($ USDC)</label>
+            <input type="number" id="sbAmount" value="1.50" step="0.5" min="0.1">
+          </div>
+          <div class="form-group">
+            <label for="sbDest">Destination Address</label>
+            <select id="sbDest">
+              <option value="0x1234567890123456789012345678901234567890">Known Base Address (Baseline)</option>
+              <option value="0x9999999999999999999999999999999999999999">Unfamiliar New Address</option>
+              <option value="0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef">Blocklisted Address</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="sbProtocol">Protocol</label>
+            <select id="sbProtocol">
+              <option value="taskmarket">TaskMarket (Allowlisted)</option>
+              <option value="keeperhub">KeeperHub (Allowlisted)</option>
+              <option value="unverified_dex">Unverified DEX (Novel)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="sbChain">Chain</label>
+            <select id="sbChain">
+              <option value="base">Base (Authorized)</option>
+              <option value="solana">Solana (Disallowed)</option>
+            </select>
+          </div>
+          <button class="btn btn-filled" id="btnEvaluate" onclick="evaluateCustomProposal()">
+            <span>Evaluate Action</span>
+          </button>
+        </div>
+
+        <!-- Result Box -->
+        <div class="sandbox-result" id="sandboxResult">
+          <div class="sr-header">
+            <div class="sr-verdict" id="srVerdict">
+              <span>Decision: Allowed</span>
+            </div>
+            <div style="font-size:13px; color:var(--muted);" id="srLevelBadge">
+              Authority: Level 0 (Full Autonomy)
+            </div>
+          </div>
+          <div style="font-size:14px; margin-bottom:8px;" id="srReason">
+            Reason: All constraints satisfied and parameters match historical baseline.
+          </div>
+          <div style="font-size:12px; color:var(--muted); margin-bottom:4px; font-weight:600;">
+            Labeled Risk Factors:
+          </div>
+          <div class="sr-factors" id="srFactors">
+            <span class="sr-factor-tag">Clean Amount: 0 pts</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LIVE ACTIVITY FEED -->
+  <section class="feed-section" id="activity-feed">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Telemetry Stream</div>
+        <h2>Real-time Action Records & Decisions</h2>
+        <p>
+          Every evaluated proposal is immutably logged with its distinct authority level,
+          factor scores, and deterministic rationale.
+        </p>
+      </div>
+
+      <div class="feed-table-wrap">
+        <table class="feed-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Action ID</th>
+              <th>Amount</th>
+              <th>Target</th>
+              <th>Authority</th>
+              <th>Outcome</th>
+              <th>Deterministic Rationale</th>
+            </tr>
+          </thead>
+          <tbody id="actionFeedBody">
+            <tr>
+              <td colspan="7" style="text-align:center; color:var(--muted); padding:24px;">Loading real-time records from controller...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how-it-works">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">How it works</div>
+        <h2>One evaluation, five layers, one decision</h2>
+        <p>
+          Every proposed action passes through the same pipeline, in the same order,
+          every time. The output is always reproducible from the same inputs.
+        </p>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <span class="step-num">01</span>
+          <div>
+            <h4>Hard policy check</h4>
+            <p>Deterministic limits — max transfer, allowed chains and protocols, actions per hour — that no score can override.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-num">02</span>
+          <div>
+            <h4>Risk scoring</h4>
+            <p>The proposed action is scored on amount, destination novelty, protocol familiarity, and current frequency.</p>
+            <span class="tagged">outputs a labeled factor breakdown</span>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-num">03</span>
+          <div>
+            <h4>Drift detection</h4>
+            <p>Current behavior is compared against the agent's own established baseline — size, velocity, destination spread.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-num">04</span>
+          <div>
+            <h4>Trust update</h4>
+            <p>Recent behavior quality adjusts a decaying trust score — violations and drift cost more than clean actions earn back.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-num">05</span>
+          <div>
+            <h4>Authority decision</h4>
+            <p>All four signals combine into one of six authority levels, with a plain-language reason attached to the audit record.</p>
+            <span class="tagged">deterministic — never decided by an LLM</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <div class="cta-band">
+    <h3>Watch an agent earn — and lose — its own autonomy</h3>
+    <p>The full demo walks through normal operation, a drift event, a held payment, and recovery — with a real transaction at the end of it.</p>
+    <a href="https://github.com/AGAkodi/Throttle#demo-walkthrough" target="_blank" class="btn btn-filled">Explore full verification suite</a>
+  </div>
+
+  <div style="height:40px"></div>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="brand">
+          <span class="brand-mark">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 18L10 6L14 14L20 4" stroke="#d6f45c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          Throttle
+        </div>
+        <p>A dynamic autonomy controller for long-running onchain agents, built for the KeeperHub × DoraHacks hackathon main track.</p>
+      </div>
+      <div class="footer-col">
+        <h6>Project</h6>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#problem">Problem</a></li>
+          <li><a href="#solution">Solution</a></li>
+          <li><a href="#architecture">Architecture</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h6>Integrations</h6>
+        <ul>
+          <li><a href="https://github.com/daydreamsai/daydreams" target="_blank">Daydreams</a></li>
+          <li><a href="https://taskmarket.dev" target="_blank">TaskMarket</a></li>
+          <li><a href="https://keeperhub.com" target="_blank">KeeperHub</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h6>Links</h6>
+        <ul>
+          <li><a href="https://github.com/AGAkodi/Throttle" target="_blank">GitHub repository</a></li>
+          <li><a href="#evaluator">Live Evaluator</a></li>
+          <li><a href="#activity-feed">Telemetry Feed</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>Throttle — built for KeeperHub × DoraHacks, Sep 2026</span>
+      <span>Agent proposes. Controller authorizes. KeeperHub executes.</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  /**
+   * THROTTLE INTERACTIVE CLIENT CONTROLLER
+   * Handles live connection to http://localhost:4000
+   * Real-time SSE updates, interactive Authority Ladder,
+   * Simulation triggers, and fallback client-side deterministic evaluation.
+   */
+
+  const API_BASE = 'http://localhost:4000';
+  let isConnected = false;
+  let activeAgent = null;
+  let eventSource = null;
+
+  // Local state cache
+  let localState = {
+    agentId: 'daydreams-agent-alpha',
+    name: 'Daydreams Agent Alpha',
+    currentAuthorityLevel: 0,
+    trustScore: { current: 85 },
+    baseline: {
+      isEstablished: true,
+      meanAmountUsd: 1.5,
+      knownDestinations: ['0x1234567890123456789012345678901234567890', '0x2345678901234567890123456789012345678901', '0x3456789012345678901234567890123456789012'],
+    },
+    policyConstraints: {
+      maxSingleTransferUsd: 50.0,
+      maxHourlySpendUsd: 150.0,
+      allowedChains: ['base'],
+      allowedProtocols: ['taskmarket', 'keeperhub'],
+      destinationBlocklist: ['0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef']
+    },
+    metrics: { hourlySpendUsd: 0.0 }
+  };
+
+  const LEVEL_NAMES = [
+    'Full Autonomy',
+    'Logged Autonomy',
+    'Enhanced Monitoring',
+    'Restricted Scope',
+    'Approval Required',
+    'Frozen'
+  ];
+
+  // Initialize
+  window.addEventListener('DOMContentLoaded', () => {
+    initConnection();
+    fetchLiveState();
+    fetchLiveActions();
+    setInterval(fetchLiveState, 3000);
+  });
+
+  function initConnection() {
+    try {
+      if (eventSource) eventSource.close();
+      eventSource = new EventSource(`${API_BASE}/api/stream`);
+
+      eventSource.onopen = () => {
+        setConnected(true);
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          handleLiveEvent(data);
+        } catch (e) {
+          console.warn('[SSE Parse]', e);
+        }
+      };
+
+      eventSource.onerror = () => {
+        setConnected(false);
+      };
+    } catch {
+      setConnected(false);
+    }
+  }
+
+  function setConnected(connected) {
+    isConnected = connected;
+    const dot = document.getElementById('apiDot');
+    const text = document.getElementById('apiStatusText');
+    const heartbeat = document.getElementById('heartbeatText');
+
+    if (connected) {
+      dot.className = 'api-status-dot';
+      text.innerText = 'Controller: Online (port 4000)';
+      heartbeat.innerText = 'evaluating live via SSE';
+    } else {
+      dot.className = 'api-status-dot offline';
+      text.innerText = 'Controller: Standalone / Demo';
+      heartbeat.innerText = 'client simulation active';
+    }
+  }
+
+  async function fetchLiveState() {
+    try {
+      const res = await fetch(`${API_BASE}/api/agents`);
+      if (!res.ok) throw new Error();
+      const agents = await res.json();
+      if (agents && agents.length > 0) {
+        setConnected(true);
+        activeAgent = agents[0];
+        updateUIWithAgent(activeAgent);
+      }
+    } catch {
+      // Offline: keep local state
+      updateUIWithAgent(localState);
+    }
+  }
+
+  async function fetchLiveActions() {
+    try {
+      const res = await fetch(`${API_BASE}/api/actions?limit=15`);
+      if (!res.ok) throw new Error();
+      const actions = await res.json();
+      renderActions(actions);
+    } catch {
+      // Render simulated sample actions
+      renderActions(getSimulatedActions());
+    }
+  }
+
+  function handleLiveEvent(data) {
+    if (data.agent) {
+      activeAgent = data.agent;
+      updateUIWithAgent(data.agent);
+    }
+    if (data.record) {
+      prependActionRow(data.record);
+      animateStagePipeline(data.decision?.allowed);
+    }
+    if (data.type === 'scenario_triggered') {
+      flashActiveRung();
+    }
+  }
+
+  function updateUIWithAgent(agent) {
+    if (!agent) return;
+    localState = agent;
+
+    // Headings and labels
+    document.getElementById('agentNameLabel').innerText = `— ${agent.name || agent.agentId}`;
+    document.getElementById('trustScoreVal').innerText = `${Math.round(agent.trustScore?.current || 85)}%`;
+    document.getElementById('baselineMeanVal').innerText = `$${(agent.baseline?.meanAmountUsd || 1.5).toFixed(2)}`;
+    document.getElementById('baselineKnownVal').innerText = `${agent.baseline?.knownDestinations?.length || 3} known addresses`;
+    document.getElementById('hourlySpendVal').innerText = `$${(agent.metrics?.hourlySpendUsd || 0).toFixed(2)}`;
+    document.getElementById('hourlyCapVal').innerText = `Cap: $${(agent.policyConstraints?.maxHourlySpendUsd || 150).toFixed(2)} / hr`;
+
+    const level = agent.currentAuthorityLevel ?? 0;
+    document.getElementById('activeLevelVal').innerText = `Level ${level}`;
+    document.getElementById('activeStatusVal').innerText = LEVEL_NAMES[level] || 'Unknown';
+
+    // Highlight active ladder rung
+    for (let i = 0; i <= 5; i++) {
+      const rung = document.getElementById(`rung-${i}`);
+      const stateBadge = document.getElementById(`state-${i}`);
+      if (!rung || !stateBadge) continue;
+
+      rung.className = 'rung';
+      if (i === level) {
+        rung.classList.add('current');
+        if (i === 3 || i === 4) rung.classList.add('current-watch');
+        if (i === 5) rung.classList.add('current-stop');
+
+        stateBadge.innerHTML = '<i></i>current';
+        if (i <= 2) stateBadge.className = 'state ok';
+        else if (i <= 4) stateBadge.className = 'state watch';
+        else stateBadge.className = 'state stop';
+      } else {
+        if (i <= 2) {
+          stateBadge.innerHTML = '<i></i>available';
+          stateBadge.className = 'state ok';
+        } else {
+          stateBadge.innerHTML = '<i></i>held in reserve';
+          stateBadge.className = i === 5 ? 'state stop' : 'state watch';
+        }
+      }
+    }
+  }
+
+  function flashActiveRung() {
+    const activeRung = document.querySelector('.rung.current');
+    if (activeRung) {
+      activeRung.style.transform = 'scale(1.02)';
+      setTimeout(() => { activeRung.style.transform = ''; }, 250);
+    }
+  }
+
+  // Trigger canonical scenarios (Baseline, Drift, Approval, Breach, Recovery)
+  async function triggerScenario(scenario) {
+    if (isConnected) {
+      try {
+        const res = await fetch(`${API_BASE}/api/simulate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scenario, agentId: localState.agentId })
+        });
+        const data = await res.json();
+        if (data.agent) updateUIWithAgent(data.agent);
+        if (data.record) prependActionRow(data.record);
+        animateStagePipeline(data.decision?.allowed);
+        return;
+      } catch (err) {
+        console.warn('Simulation via API failed, using client fallback', err);
+      }
+    }
+
+    // Client-side fallback simulation
+    clientSimulateScenario(scenario);
+  }
+
+  function clientSimulateScenario(scenario) {
+    let newLevel = 0;
+    let newTrust = 85;
+    let reason = '';
+    let mockAction = null;
+
+    if (scenario === 'seed') {
+      newLevel = 0;
+      newTrust = 85;
+      reason = 'Baseline re-established: Full autonomy';
+      mockAction = {
+        action: { id: `seed_${Date.now()}`, type: 'payment', chain: 'base', protocol: 'taskmarket', destination: '0x1234567890123456789012345678901234567890', amountUsd: 1.5 },
+        decision: { allowed: true, authorityLevel: 0, reason }
+      };
+    } else if (scenario === 'drift') {
+      newLevel = 3;
+      newTrust = 68;
+      reason = 'Behavioral drift detected: 8x baseline spend & new destination';
+      mockAction = {
+        action: { id: `drift_${Date.now()}`, type: 'payment', chain: 'base', protocol: 'taskmarket', destination: '0x9999999999999999999999999999999999999999', amountUsd: 12.0 },
+        decision: { allowed: true, authorityLevel: 3, reason }
+      };
+    } else if (scenario === 'approval') {
+      newLevel = 4;
+      newTrust = 52;
+      reason = 'Risk threshold exceeded: Novel DEX protocol & 28x spend anomaly';
+      mockAction = {
+        action: { id: `appr_${Date.now()}`, type: 'payment', chain: 'base', protocol: 'unverified_dex', destination: '0x8888888888888888888888888888888888888888', amountUsd: 42.0 },
+        decision: { allowed: false, requiresApproval: true, authorityLevel: 4, reason }
+      };
+    } else if (scenario === 'violation') {
+      newLevel = 5;
+      newTrust = 20;
+      reason = 'Hard policy breach: Unauthorized chain (solana) & spend > single transfer cap ($50)';
+      mockAction = {
+        action: { id: `breach_${Date.now()}`, type: 'payment', chain: 'solana', protocol: 'unknown', destination: '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef', amountUsd: 800.0 },
+        decision: { allowed: false, isFrozen: true, authorityLevel: 5, reason }
+      };
+    } else {
+      // recovery
+      newLevel = 1;
+      newTrust = 82;
+      reason = 'Clean streak rehabilitating agent: Restored to Logged Autonomy';
+      mockAction = {
+        action: { id: `recov_${Date.now()}`, type: 'payment', chain: 'base', protocol: 'taskmarket', destination: '0x1234567890123456789012345678901234567890', amountUsd: 1.5 },
+        decision: { allowed: true, authorityLevel: 1, reason }
+      };
+    }
+
+    localState.currentAuthorityLevel = newLevel;
+    localState.trustScore.current = newTrust;
+    updateUIWithAgent(localState);
+    if (mockAction) {
+      prependActionRow({
+        id: mockAction.action.id,
+        timestamp: Date.now(),
+        action: mockAction.action,
+        decision: mockAction.decision,
+        authorityLevel: newLevel,
+        executionStatus: mockAction.decision.allowed ? 'executed' : (mockAction.decision.requiresApproval ? 'pending' : 'rejected')
+      });
+      animateStagePipeline(mockAction.decision.allowed);
+    }
+  }
+
+  // Custom proposal evaluation sandbox
+  async function evaluateCustomProposal() {
+    const amountUsd = parseFloat(document.getElementById('sbAmount').value) || 1.5;
+    const destination = document.getElementById('sbDest').value;
+    const protocol = document.getElementById('sbProtocol').value;
+    const chain = document.getElementById('sbChain').value;
+
+    const action = {
+      agentId: localState.agentId,
+      amountUsd,
+      destination,
+      protocol,
+      chain,
+      tokenSymbol: 'USDC',
+      type: 'payment',
+      timestamp: Date.now()
+    };
+
+    if (isConnected) {
+      try {
+        const res = await fetch(`${API_BASE}/api/evaluate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(action)
+        });
+        const data = await res.json();
+        renderSandboxResult(data.decision);
+        if (data.agent) updateUIWithAgent(data.agent);
+        if (data.record) prependActionRow(data.record);
+        animateStagePipeline(data.decision.allowed);
+        return;
+      } catch (e) {
+        console.warn('POST /api/evaluate failed, fallback to local', e);
+      }
+    }
+
+    // Client evaluation fallback
+    const decision = localEvaluate(action, localState);
+    renderSandboxResult(decision);
+    localState.currentAuthorityLevel = decision.authorityLevel;
+    updateUIWithAgent(localState);
+    prependActionRow({
+      id: `act_${Date.now()}`,
+      timestamp: Date.now(),
+      action,
+      decision,
+      authorityLevel: decision.authorityLevel,
+      executionStatus: decision.allowed ? 'executed' : (decision.requiresApproval ? 'pending' : 'rejected')
+    });
+    animateStagePipeline(decision.allowed);
+  }
+
+  function localEvaluate(action, profile) {
+    const factors = [];
+    let risk = 0;
+    let allowed = true;
+    let level = 0;
+    let reason = 'Normal baseline execution';
+
+    // Layer 1 Policy
+    if (action.chain !== 'base') {
+      return {
+        allowed: false, isFrozen: true, requiresApproval: false, authorityLevel: 5,
+        reason: `Hard policy breach: Chain ${action.chain} is not allowlisted`,
+        riskAssessment: { score: 100, factors: [{ label: 'chain policy', points: 100 }] }
+      };
+    }
+    if (action.destination === '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef') {
+      return {
+        allowed: false, isFrozen: true, requiresApproval: false, authorityLevel: 5,
+        reason: 'Hard policy breach: Destination is blocklisted',
+        riskAssessment: { score: 100, factors: [{ label: 'destination blocklist', points: 100 }] }
+      };
+    }
+    if (action.amountUsd > 50.0) {
+      return {
+        allowed: false, isFrozen: true, requiresApproval: false, authorityLevel: 5,
+        reason: `Single transfer cap exceeded: $${action.amountUsd} > $50.00 max limit`,
+        riskAssessment: { score: 90, factors: [{ label: 'max single transfer', points: 90 }] }
+      };
+    }
+
+    // Layer 2 Risk & Drift
+    const mean = profile.baseline?.meanAmountUsd || 1.5;
+    if (action.amountUsd > mean * 20) {
+      risk += 35;
+      factors.push({ label: 'severe amount anomaly', points: 35 });
+    } else if (action.amountUsd > mean * 5) {
+      risk += 20;
+      factors.push({ label: 'elevated amount', points: 20 });
+    }
+
+    if (!profile.baseline?.knownDestinations?.includes(action.destination)) {
+      risk += 25;
+      factors.push({ label: 'unfamiliar destination', points: 25 });
+    }
+
+    if (action.protocol === 'unverified_dex') {
+      risk += 30;
+      factors.push({ label: 'unverified protocol', points: 30 });
+    }
+
+    if (risk >= 60) {
+      level = 4;
+      allowed = false;
+      reason = 'Approval required: High composite risk & novel protocol';
+    } else if (risk >= 30) {
+      level = 3;
+      allowed = true;
+      reason = 'Restricted authority: Moderate risk, baseline drift detected';
+    } else if (risk >= 15) {
+      level = 2;
+      allowed = true;
+      reason = 'Enhanced monitoring: Minor variation, continuous re-evaluation';
+    } else {
+      level = 0;
+      allowed = true;
+      reason = 'Full autonomy: Operational parameters within normal range';
+    }
+
+    return {
+      allowed,
+      requiresApproval: level === 4,
+      isFrozen: level === 5,
+      authorityLevel: level,
+      reason,
+      riskAssessment: { score: risk, factors }
+    };
+  }
+
+  function renderSandboxResult(decision) {
+    const box = document.getElementById('sandboxResult');
+    const verdict = document.getElementById('srVerdict');
+    const badge = document.getElementById('srLevelBadge');
+    const reason = document.getElementById('srReason');
+    const factors = document.getElementById('srFactors');
+
+    box.style.display = 'block';
+    const lvl = decision.authorityLevel;
+    badge.innerText = `Authority: Level ${lvl} (${LEVEL_NAMES[lvl]})`;
+    reason.innerText = `Deterministic Rationale: ${decision.reason}`;
+
+    if (decision.isFrozen) {
+      verdict.innerHTML = `<span style="color:var(--rust); font-weight:700;">❌ FROZEN (Hard Breach)</span>`;
+    } else if (decision.requiresApproval) {
+      verdict.innerHTML = `<span style="color:var(--amber); font-weight:700;">⚠️ HELD FOR APPROVAL</span>`;
+    } else {
+      verdict.innerHTML = `<span style="color:#15803d; font-weight:700;">✅ AUTHORIZED (Execute Signature)</span>`;
+    }
+
+    factors.innerHTML = '';
+    const fList = decision.riskAssessment?.factors || [];
+    if (fList.length === 0) {
+      factors.innerHTML = '<span class="sr-factor-tag">Clean: 0 risk points</span>';
+    } else {
+      fList.forEach(f => {
+        factors.innerHTML += `<span class="sr-factor-tag penalty">${f.label}: +${f.points} pts</span>`;
+      });
+    }
+  }
+
+  function animateStagePipeline(allowed) {
+    for (let i = 1; i <= 5; i++) {
+      const node = document.getElementById(`stage-${i}`);
+      if (!node) continue;
+      setTimeout(() => {
+        node.classList.add('active-stage');
+        setTimeout(() => node.classList.remove('active-stage'), 700);
+      }, (i - 1) * 200);
+    }
+  }
+
+  // Interactive Problem Comparison Slider
+  function updateProblemComparison(val) {
+    const amount = parseFloat(val);
+    document.getElementById('problemSliderVal').innerText = `$${amount.toLocaleString()} USDC`;
+    document.getElementById('staticTraceAction').innerText = `transfer $${amount.toLocaleString()} → unknown address`;
+    document.getElementById('dynamicTraceAction').innerText = `transfer $${amount.toLocaleString()} → unknown address`;
+
+    const staticRes = document.getElementById('staticTraceResult');
+    const dynamicRes = document.getElementById('dynamicTraceResult');
+
+    if (amount <= 1000) {
+      staticRes.innerText = 'approved';
+      staticRes.className = 'v-bad';
+    } else {
+      staticRes.innerText = 'rejected (flat cap)';
+      staticRes.className = 'v-good';
+    }
+
+    if (amount <= 5.0) {
+      dynamicRes.innerText = 'approved (baseline match)';
+      dynamicRes.className = 'v-good';
+    } else if (amount <= 25.0) {
+      dynamicRes.innerText = 'logged & monitored (Level 2)';
+      dynamicRes.className = 'v-good';
+    } else {
+      dynamicRes.innerText = 'held for approval (Level 4 drift)';
+      dynamicRes.className = 'v-good';
+    }
+  }
+
+  // Table row helper
+  function prependActionRow(rec) {
+    const tbody = document.getElementById('actionFeedBody');
+    if (!tbody) return;
+
+    // Remove placeholder if exists
+    if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
+
+    const tr = document.createElement('tr');
+    const lvl = rec.authorityLevel ?? rec.decision?.authorityLevel ?? 0;
+    const time = new Date(rec.timestamp || Date.now()).toLocaleTimeString();
+    const act = rec.action || {};
+    const dec = rec.decision || {};
+
+    let badgeClass = 'b-l0';
+    if (lvl === 3) badgeClass = 'b-l3';
+    if (lvl === 4) badgeClass = 'b-l4';
+    if (lvl === 5) badgeClass = 'b-l5';
+
+    tr.innerHTML = `
+      <td style="font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--muted);">${time}</td>
+      <td style="font-family:'JetBrains Mono',monospace; font-weight:500;">${(rec.actionId || rec.id || 'act_').slice(0, 12)}</td>
+      <td style="font-weight:600;">$${(act.amountUsd || 0).toFixed(2)} <span style="font-size:11px; color:var(--muted);">${act.tokenSymbol || 'USDC'}</span></td>
+      <td style="font-family:'JetBrains Mono',monospace; font-size:12px;" title="${act.destination || ''}">${(act.destination || '').slice(0, 10)}...</td>
+      <td><span class="feed-badge ${badgeClass}">L${lvl} ${LEVEL_NAMES[lvl]}</span></td>
+      <td><span style="font-weight:600; font-size:12.5px; color:${rec.executionStatus === 'executed' ? '#15803d' : (rec.executionStatus === 'pending' ? 'var(--amber)' : 'var(--rust)')};">${rec.executionStatus || 'executed'}</span></td>
+      <td style="color:var(--muted); font-size:12.5px; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${dec.reason || ''}">${dec.reason || 'Normal operational parameter match'}</td>
+    `;
+
+    tbody.insertBefore(tr, tbody.firstChild);
+
+    // Keep at most 15 rows
+    while (tbody.children.length > 15) {
+      tbody.removeChild(tbody.lastChild);
+    }
+  }
+
+  function renderActions(actions) {
+    const tbody = document.getElementById('actionFeedBody');
+    tbody.innerHTML = '';
+    if (!actions || actions.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--muted); padding:20px;">No actions recorded yet.</td></tr>';
+      return;
+    }
+    actions.forEach(a => prependActionRow(a));
+  }
+
+  function getSimulatedActions() {
+    const now = Date.now();
+    return [
+      {
+        id: 'seed_act_10',
+        timestamp: now - 30000,
+        action: { amountUsd: 1.5, tokenSymbol: 'USDC', destination: '0x1234567890123456789012345678901234567890' },
+        decision: { authorityLevel: 0, reason: 'Full autonomy: Baseline match optimal' },
+        authorityLevel: 0,
+        executionStatus: 'executed'
+      },
+      {
+        id: 'seed_act_9',
+        timestamp: now - 90000,
+        action: { amountUsd: 2.0, tokenSymbol: 'USDC', destination: '0x2345678901234567890123456789012345678901' },
+        decision: { authorityLevel: 0, reason: 'Full autonomy: Verified destination streak' },
+        authorityLevel: 0,
+        executionStatus: 'executed'
+      }
+    ];
+  }
+</script>
+
+</body>
+</html>
