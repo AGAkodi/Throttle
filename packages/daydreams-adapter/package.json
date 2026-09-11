@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsc -b",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "clean": "rimraf dist"
   },
   "dependencies": {

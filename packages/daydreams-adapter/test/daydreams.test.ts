@@ -67,19 +67,93 @@ describe('Daydreams / TaskMarket Adapter', () => {
       simulationMode: true,
     });
 
-    const client = new TaskMarketClient();
+    class MockTaskMarketClient extends TaskMarketClient {
+      public claimsMade: Array<{ taskId: string; workerAddress: string; paymentSignature?: string }> = [];
+
+      constructor() {
+        super('http://mock-taskmarket.local');
+      }
+
+      public override async listOpenTasks() {
+        return [
+          {
+            id: 'task-deterministic-001',
+            title: 'Deterministic Test Bounty',
+            type: 'bounty',
+            status: 'open' as const,
+            creatorAddress: '0x1234567890123456789012345678901234567890',
+            createdAt: new Date().toISOString(),
+          },
+        ];
+      }
+
+      public override async claimTask(taskId: string, workerAddress: string, paymentSignature?: string) {
+        this.claimsMade.push({ taskId, workerAddress, paymentSignature });
+
+        if (!paymentSignature) {
+          // Return 402 challenge
+          return {
+            status: 402,
+            paymentRequired: true,
+            challenge: {
+              chain: 'base',
+              contract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+              payTo: '0x1234567890123456789012345678901234567890',
+              amount: '1000000',
+              validBefore: Math.floor(Date.now() / 1000) + 3600,
+              validAfter: Math.floor(Date.now() / 1000) - 60,
+              nonce: '0x1234567890abcdef',
+            },
+          };
+        }
+
+        // Settled with signature
+        return {
+          status: 200,
+          paymentRequired: false,
+          data: {
+            success: true,
+            txHash: '0xmocksettlementtxhash999',
+          },
+        };
+      }
+    }
+
+    const mockClient = new MockTaskMarketClient();
     const agent = new TaskMarketAgent({
       agentId: 'agent-cycle-test',
       workerAddress: '0x1234567890123456789012345678901234567890',
       store,
       signGate,
-      client,
+      client: mockClient,
     });
 
     const result = await agent.runCycle();
+
+    // 1. Result structure
     expect(result.success).toBe(true);
     expect(result.stage).toBe('settlement');
     expect(result.signature).toBeDefined();
     expect(result.authorityLevel).toBe(AuthorityLevel.FULL_AUTONOMY);
+    expect(result.taskId).toBe('task-deterministic-001');
+
+    // 2. Client interaction: two calls (challenge, then settlement with signature)
+    expect(mockClient.claimsMade).toHaveLength(2);
+    expect(mockClient.claimsMade[0].paymentSignature).toBeUndefined();
+    expect(mockClient.claimsMade[1].paymentSignature).toBe(result.signature);
+
+    // 3. Action record persisted in store
+    const records = store.getActionRecords('agent-cycle-test');
+    expect(records.length).toBeGreaterThan(0);
+    const execRecord = records.find((r) => r.executionStatus === 'executed');
+    expect(execRecord).toBeDefined();
+    expect(execRecord?.executionTxHash).toBe(result.signature);
+    expect(execRecord?.action.amountUsd).toBe(1.0);
+    expect(execRecord?.action.destination).toBe('0x1234567890123456789012345678901234567890');
+
+    // 4. Telemetry metrics updated
+    const updatedProfile = store.getAgent('agent-cycle-test');
+    expect(updatedProfile?.metrics.totalActions).toBeGreaterThanOrEqual(1);
+    expect(updatedProfile?.metrics.successfulActions).toBeGreaterThanOrEqual(1);
   });
 });

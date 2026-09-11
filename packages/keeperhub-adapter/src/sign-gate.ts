@@ -190,7 +190,8 @@ export class SignGate {
 
     const signEndpoint = '/api/agentic-wallet/sign';
     const url = `${this.config.keeperHubBaseUrl}${signEndpoint}`;
-    const timestamp = Date.now().toString();
+    const timestampSec = String(Math.floor(Date.now() / 1000));
+    const timestampMs = Date.now().toString();
 
     const signPayload = {
       chain: challenge.chain || 'base',
@@ -199,14 +200,20 @@ export class SignGate {
     };
 
     const bodyString = JSON.stringify(signPayload);
-    const hmac = this.generateHmac('POST', signEndpoint, bodyString, timestamp);
+    const bodyDigest = crypto.createHash('sha256').update(bodyString).digest('hex');
+    const khSigningString = `POST\n${signEndpoint}\n${this.config.keeperHubSubOrgId}\n${bodyDigest}\n${timestampSec}`;
+    const khHmac = crypto.createHmac('sha256', this.config.keeperHubHmacSecret).update(khSigningString).digest('hex');
+    const legacyHmac = this.generateHmac('POST', signEndpoint, bodyString, timestampMs);
 
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-KeeperHub-Timestamp': timestamp,
-        'X-KeeperHub-Signature': hmac,
+        'X-KH-Sub-Org': this.config.keeperHubSubOrgId,
+        'X-KH-Timestamp': timestampSec,
+        'X-KH-Signature': khHmac,
+        'X-KeeperHub-Timestamp': timestampMs,
+        'X-KeeperHub-Signature': legacyHmac,
         'X-KeeperHub-SubOrg': this.config.keeperHubSubOrgId,
       },
       body: bodyString,

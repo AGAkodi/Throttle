@@ -25,15 +25,16 @@ Daydreams is a framework for building autonomous agents that execute multi-step 
 ---
 
 ### 4. Testnet or Mainnet?
-* **TaskMarket Payment & Settlement Leg:** **Base Mainnet (USDC contract `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`)**. TaskMarket operates solely on Base mainnet with real USDC.
-* **Controller Development & Test Leg:** In-memory SQLite / test harness with deterministic EIP-3009 mock challenges and live API verification (`scripts/prove-execution-path.ts`).
+* **TaskMarket Payment & Settlement Leg:** Architecture built for Base Mainnet settlement (canonical USDC contract `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`); end-to-end live settlement proof is in progress, see Phase 1 status in TODO.md.
+* **Controller Development & Test Leg:** In-memory SQLite / deterministic test harness and execution path harness (`scripts/prove-execution-path.ts`).
 
 ---
 
 ### 5. What still breaks or is unfinished? (Candid Assessment)
-1. **Human Approval UI Webhook:** In Level 4 (Approval Required), the transaction is held in the SQLite database with `execution_status = 'pending'`. The operator must click "Approve" in the dashboard; there is currently no push notification to mobile/Telegram.
-2. **TaskMarket Task Submissions:** The demo script handles task discovery and claiming via raw-REST 402 challenge flow; complete automated multi-step LLM task deliverable submission requires external API worker registration.
-3. **Turnkey Session Refreshing:** If an agentic wallet sub-org session expires during long-running tasks, it requires an HMAC re-auth handshake.
+1. **Live TaskMarket Settlement:** Live TaskMarket settlement has not yet been confirmed end-to-end with a real transaction hash. Active tasks on api.taskmarket.dev currently run in bounty/qualification mode rather than direct 402 claim mode, and generic contract signing is awaiting KeeperHub KEEP-311.
+2. **Human Approval UI Webhook:** In Level 4 (Approval Required), the transaction is held in the SQLite database with `execution_status = 'pending'`. The operator must click "Approve" in the dashboard; there is currently no push notification to mobile/Telegram.
+3. **TaskMarket Task Submissions:** The demo script handles task discovery and claiming via raw-REST 402 challenge flow; complete automated multi-step LLM task deliverable submission requires external API worker registration.
+4. **Turnkey Session Refreshing:** If an agentic wallet sub-org session expires during long-running tasks, it requires an HMAC re-auth handshake.
 
 ---
 

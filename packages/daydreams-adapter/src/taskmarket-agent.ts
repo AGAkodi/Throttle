@@ -74,14 +74,17 @@ export class TaskMarketAgent {
 
     // Step 2: Fetch open tasks
     const tasks = await client.listOpenTasks();
-    const candidateTask = tasks.find((t) => t.status === 'open') || {
-      id: `task_${Date.now()}`,
-      title: 'Automated Data Verification Task',
-      type: 'bounty',
-      status: 'open',
-      creatorAddress: '0x1234567890123456789012345678901234567890',
-      createdAt: new Date().toISOString(),
-    };
+    const candidateTask = tasks.find((t) => t.status === 'open');
+
+    if (!candidateTask) {
+      return {
+        taskId: '',
+        success: false,
+        stage: 'discovery',
+        authorityLevel: profile.currentAuthorityLevel,
+        error: 'No open tasks available on TaskMarket',
+      };
+    }
 
     this.emitter.emit({
       agentId,
@@ -92,21 +95,24 @@ export class TaskMarketAgent {
     // Step 3: Claim task and intercept 402
     const initialClaim = await client.claimTask(candidateTask.id, workerAddress);
 
-    let challenge: X402ChallengePayload;
-    if (initialClaim.paymentRequired && initialClaim.challenge) {
-      challenge = initialClaim.challenge;
-    } else {
-      // Standard EIP-3009 challenge fallback
-      challenge = {
-        chain: 'base',
-        contract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-        payTo: candidateTask.creatorAddress,
-        amount: '1000000', // 1.00 USDC
-        validBefore: Math.floor(Date.now() / 1000) + 3600,
-        validAfter: Math.floor(Date.now() / 1000) - 60,
-        nonce: `0x${Date.now().toString(16)}`,
+    if (!initialClaim.paymentRequired || !initialClaim.challenge) {
+      this.emitter.emit({
+        agentId,
+        actionId: candidateTask.id,
+        type: 'failure',
+        error: initialClaim.error || `Expected 402 challenge but received status ${initialClaim.status}`,
+      });
+
+      return {
+        taskId: candidateTask.id,
+        success: false,
+        stage: '402_challenge',
+        authorityLevel: profile.currentAuthorityLevel,
+        error: initialClaim.error || `Expected 402 challenge but received status ${initialClaim.status}`,
       };
     }
+
+    const challenge: X402ChallengePayload = initialClaim.challenge;
 
     // Step 4: Authorize and Sign through Gate 2 Sign-Gate
     const signResult = await signGate.handlePaymentChallenge(agentId, challenge, 'taskmarket');
@@ -131,7 +137,7 @@ export class TaskMarketAgent {
     // Step 5: Settle on TaskMarket using PAYMENT-SIGNATURE
     const settledClaim = await client.claimTask(candidateTask.id, workerAddress, signResult.signature);
 
-    if (settledClaim.status >= 400 && settledClaim.status !== 400 /* Mock API endpoint difference */) {
+    if (settledClaim.status >= 400) {
       this.emitter.emit({
         agentId,
         actionId: candidateTask.id,
