@@ -1,8 +1,78 @@
+import { privateKeyToAccount } from 'viem/accounts';
+import type { Hex } from 'viem';
+
+export interface EarningsReceivedEvent {
+  amount: string; // raw base units (e.g. "1000000" for 1 USDC)
+  amountUsd: number;
+  txHash: string;
+  taskId: string;
+  timestamp: number;
+  tokenSymbol: string;
+  recipientAddress?: string;
+}
+
+export interface X402ChallengeData {
+  chain?: string;
+  contract: string;
+  payTo: string;
+  amount: string;
+  validBefore: number;
+  validAfter: number;
+  nonce: string;
+  domain?: {
+    name?: string;
+    version?: string;
+    chainId?: number;
+    verifyingContract?: string;
+  };
+}
+
 /**
- * TaskMarket Raw-REST Client
- * Direct HTTP client interacting with api.taskmarket.dev (avoiding the opaque official CLI subprocess).
- * Handles task discovery, claim challenges, and payment challenge interception.
+ * Signs EIP-3009 TransferWithAuthorization directly with the agent's operating wallet key.
+ * Completely self-contained; does not invoke KeeperHub.
  */
+export async function signTransferWithAuthorization(
+  privateKey: string,
+  challenge: X402ChallengeData
+): Promise<string> {
+  const formattedKey = (privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`) as Hex;
+  const account = privateKeyToAccount(formattedKey);
+
+  const chainId = challenge.domain?.chainId ?? (challenge.chain === 'base' ? 8453 : 8453);
+  const verifyingContract = (challenge.contract || challenge.domain?.verifyingContract) as Hex;
+  const rawNonce = challenge.nonce.startsWith('0x') ? challenge.nonce : `0x${challenge.nonce}`;
+  const formattedNonce = (rawNonce.length === 66 ? rawNonce : rawNonce.padEnd(66, '0')) as Hex;
+
+  const signature = await account.signTypedData({
+    domain: {
+      name: challenge.domain?.name ?? 'USD Coin',
+      version: challenge.domain?.version ?? '2',
+      chainId,
+      verifyingContract,
+    },
+    types: {
+      TransferWithAuthorization: [
+        { name: 'from', type: 'address' },
+        { name: 'to', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'validAfter', type: 'uint256' },
+        { name: 'validBefore', type: 'uint256' },
+        { name: 'nonce', type: 'bytes32' },
+      ],
+    },
+    primaryType: 'TransferWithAuthorization',
+    message: {
+      from: account.address,
+      to: challenge.payTo as Hex,
+      value: BigInt(challenge.amount),
+      validAfter: BigInt(challenge.validAfter),
+      validBefore: BigInt(challenge.validBefore),
+      nonce: formattedNonce,
+    },
+  });
+
+  return signature;
+}
 
 export interface TaskMarketTask {
   id: string;

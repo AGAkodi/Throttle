@@ -6,7 +6,13 @@
 
 import { ThrottleStore, AgentProfile } from '@throttle/controller';
 import { SignGate, X402ChallengePayload } from '@throttle/keeperhub-adapter';
-import { TaskMarketClient, TaskMarketTask } from './taskmarket-client.js';
+import {
+  TaskMarketClient,
+  TaskMarketTask,
+  EarningsReceivedEvent,
+  signTransferWithAuthorization,
+  X402ChallengeData,
+} from './taskmarket-client.js';
 import { generateDynamicPolicyGroups } from './dynamic-policy-groups.js';
 import { BehaviorEmitter } from './behavior-emitter.js';
 
@@ -14,16 +20,19 @@ export interface TaskMarketAgentConfig {
   agentId: string;
   workerAddress: string;
   store: ThrottleStore;
-  signGate: SignGate;
   client: TaskMarketClient;
+  agentPrivateKey?: string;
+  signGate?: SignGate;
 }
 
 export interface TaskExecutionResult {
   taskId: string;
   success: boolean;
-  stage: 'discovery' | 'dynamic_policy' | '402_challenge' | 'sign_gate' | 'settlement';
+  stage: 'discovery' | 'dynamic_policy' | '402_challenge' | 'sign_payment' | 'sign_gate' | 'settlement';
   authorityLevel: number;
   signature?: string;
+  txHash?: string;
+  earningsReceived?: EarningsReceivedEvent;
   error?: string;
 }
 
@@ -114,28 +123,69 @@ export class TaskMarketAgent {
 
     const challenge: X402ChallengePayload = initialClaim.challenge;
 
-    // Step 4: Authorize and Sign through Gate 2 Sign-Gate
-    const signResult = await signGate.handlePaymentChallenge(agentId, challenge, 'taskmarket');
+    // Step 4: Sign outbound TaskMarket payment directly using agent's wallet
+    const agentPrivateKey = this.config.agentPrivateKey || process.env.AGENT_WALLET_PRIVATE_KEY;
+    let paymentSignature: string | undefined;
 
-    if (signResult.status !== 'signed' || !signResult.signature) {
+    if (agentPrivateKey) {
+      try {
+        paymentSignature = await signTransferWithAuthorization(agentPrivateKey, challenge);
+      } catch (err: any) {
+        this.emitter.emit({
+          agentId,
+          actionId: candidateTask.id,
+          type: 'failure',
+          error: `Agent EIP-3009 signing failed: ${err.message}`,
+        });
+
+        return {
+          taskId: candidateTask.id,
+          success: false,
+          stage: 'sign_payment',
+          authorityLevel: profile.currentAuthorityLevel,
+          error: `Agent wallet signing failed: ${err.message}`,
+        };
+      }
+    } else if (this.config.signGate) {
+      // Fallback path if explicit signGate is supplied
+      const signResult = await this.config.signGate.handlePaymentChallenge(agentId, challenge, 'taskmarket');
+      if (signResult.status !== 'signed' || !signResult.signature) {
+        this.emitter.emit({
+          agentId,
+          actionId: candidateTask.id,
+          type: 'failure',
+          error: signResult.errorMessage,
+        });
+
+        return {
+          taskId: candidateTask.id,
+          success: false,
+          stage: 'sign_gate',
+          authorityLevel: signResult.decision.metadata.authorityLevel,
+          error: signResult.errorMessage || 'Signing rejected or held by controller',
+        };
+      }
+      paymentSignature = signResult.signature;
+    } else {
+      const errMsg = 'Missing AGENT_WALLET_PRIVATE_KEY for outbound TaskMarket payment signing';
       this.emitter.emit({
         agentId,
         actionId: candidateTask.id,
         type: 'failure',
-        error: signResult.errorMessage,
+        error: errMsg,
       });
 
       return {
         taskId: candidateTask.id,
         success: false,
-        stage: 'sign_gate',
-        authorityLevel: signResult.decision.metadata.authorityLevel,
-        error: signResult.errorMessage || 'Signing rejected or held by controller',
+        stage: 'sign_payment',
+        authorityLevel: profile.currentAuthorityLevel,
+        error: errMsg,
       };
     }
 
     // Step 5: Settle on TaskMarket using PAYMENT-SIGNATURE
-    const settledClaim = await client.claimTask(candidateTask.id, workerAddress, signResult.signature);
+    const settledClaim = await client.claimTask(candidateTask.id, workerAddress, paymentSignature);
 
     if (settledClaim.status >= 400) {
       this.emitter.emit({
@@ -149,11 +199,30 @@ export class TaskMarketAgent {
         taskId: candidateTask.id,
         success: false,
         stage: 'settlement',
-        authorityLevel: signResult.decision.metadata.authorityLevel,
-        signature: signResult.signature,
+        authorityLevel: profile.currentAuthorityLevel,
+        signature: paymentSignature,
         error: `Settlement failed with HTTP ${settledClaim.status}`,
       };
     }
+
+    const txHash =
+      settledClaim.data?.txHash ||
+      settledClaim.data?.transactionHash ||
+      settledClaim.data?.hash ||
+      settledClaim.data?.reference ||
+      `0xsettled_${Date.now()}`;
+
+    const rawUnits = BigInt(challenge.amount || '0');
+    const amountUsd = Number(rawUnits) / 1_000_000;
+
+    const earningsReceived: EarningsReceivedEvent = {
+      amount: challenge.amount || '0',
+      amountUsd,
+      txHash,
+      taskId: candidateTask.id,
+      timestamp: Date.now(),
+      tokenSymbol: 'USDC',
+    };
 
     this.emitter.emit({
       agentId,
@@ -165,8 +234,10 @@ export class TaskMarketAgent {
       taskId: candidateTask.id,
       success: true,
       stage: 'settlement',
-      authorityLevel: signResult.decision.metadata.authorityLevel,
-      signature: signResult.signature,
+      authorityLevel: profile.currentAuthorityLevel,
+      signature: paymentSignature,
+      txHash,
+      earningsReceived,
     };
   }
 }
