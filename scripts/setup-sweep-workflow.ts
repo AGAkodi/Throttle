@@ -367,10 +367,10 @@ async function main() {
     },
   };
 
-  console.log('Execution Request URL:', `${BASE_URL}/api/workflows/${workflowId}/execute?simulate=true`);
+  console.log('Execution Request URL:', `${BASE_URL}/api/workflows/${workflowId}/execute`);
   console.log('Execution Payload:', JSON.stringify(testPayload, null, 2));
 
-  const execRes = await fetch(`${BASE_URL}/api/workflows/${workflowId}/execute?simulate=true`, {
+  const execRes = await fetch(`${BASE_URL}/api/workflows/${workflowId}/execute`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

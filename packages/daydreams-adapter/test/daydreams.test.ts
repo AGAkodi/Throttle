@@ -157,7 +157,7 @@ describe('Daydreams / TaskMarket Adapter', () => {
     expect(updatedProfile?.metrics.successfulActions).toBeGreaterThanOrEqual(1);
   });
 
-  it('signs outbound payment directly with agent private key and emits EarningsReceived event', async () => {
+  it('signs outbound payment directly with agent private key and emits ConfirmedSpend event', async () => {
     const store = new ThrottleStore(':memory:');
     const profile = createDefaultProfile('agent-self-sign', 'SelfSignAgent');
     store.saveAgent(profile);
@@ -226,13 +226,13 @@ describe('Daydreams / TaskMarket Adapter', () => {
     expect(result.signature?.startsWith('0x')).toBe(true);
     expect(result.txHash).toBe('0xrealconfirmedsettlementhash888');
 
-    // Verify EarningsReceivedEvent
-    expect(result.earningsReceived).toBeDefined();
-    expect(result.earningsReceived?.amount).toBe('2500000');
-    expect(result.earningsReceived?.amountUsd).toBe(2.5);
-    expect(result.earningsReceived?.taskId).toBe('task-direct-sign-001');
-    expect(result.earningsReceived?.txHash).toBe('0xrealconfirmedsettlementhash888');
-    expect(result.earningsReceived?.tokenSymbol).toBe('USDC');
+    // Verify ConfirmedSpendEvent
+    expect(result.confirmedSpend).toBeDefined();
+    expect(result.confirmedSpend?.amount).toBe('2500000');
+    expect(result.confirmedSpend?.amountUsd).toBe(2.5);
+    expect(result.confirmedSpend?.taskId).toBe('task-direct-sign-001');
+    expect(result.confirmedSpend?.txHash).toBe('0xrealconfirmedsettlementhash888');
+    expect(result.confirmedSpend?.tokenSymbol).toBe('USDC');
   });
 
   it('fails loudly when settlement response lacks transaction hash without fabricating fallback', async () => {

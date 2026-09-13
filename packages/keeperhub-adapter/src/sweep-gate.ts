@@ -1,6 +1,13 @@
 /**
- * Gate 3: Sweep-Gate (Downstream Treasury Sweep Controller)
- * Gating point for KeeperHub-executed treasury sweep after agent receives TaskMarket earnings.
+ * Gate 3: Sweep-Gate (Downstream Treasury Allocation / Sweep Controller)
+ * Gating point for KeeperHub-executed treasury actions triggered by confirmed agent spend.
+ *
+ * Operational Rationale:
+ * When the agent confirms an outbound on-chain spend on TaskMarket (claim-fee settlement),
+ * Throttle evaluates the spend telemetry through its 5-layer pipeline and gates downstream
+ * KeeperHub execution (moving matching funds from the org Turnkey wallet to treasury/reserve).
+ * This models automated, policy-gated rebalancing/sweeps triggered by agent operational expenses.
+ *
  * Evaluates risk, trust, drift, and authority before authorizing KeeperHub to move funds.
  */
 
@@ -16,7 +23,7 @@ import {
 import { mapToSignGateDecision, SignGateDecision } from './decision-mapper.js';
 import { KeeperHubMcpClient } from './mcp-client.js';
 
-export interface EarningsReceivedEvent {
+export interface ConfirmedSpendEvent {
   amount: string; // raw base units (e.g. "1000000" for 1 USDC)
   amountUsd: number;
   txHash: string;
@@ -25,6 +32,9 @@ export interface EarningsReceivedEvent {
   tokenSymbol: string;
   recipientAddress?: string;
 }
+
+/** @deprecated Alias for backwards compatibility */
+export type EarningsReceivedEvent = ConfirmedSpendEvent;
 
 export interface SweepGateConfig {
   store: ThrottleStore;
@@ -61,19 +71,19 @@ export class SweepGate {
   }
 
   /**
-   * Evaluates an EarningsReceived event through the Throttle Controller pipeline
-   * and dispatches a KeeperHub-executed treasury sweep if authorized.
+   * Evaluates a ConfirmedSpend event through the Throttle Controller pipeline
+   * and dispatches a KeeperHub-executed treasury sweep/transfer if authorized.
    */
-  public async handleEarningsReceived(
+  public async handleConfirmedSpend(
     agentId: string,
-    earnings: EarningsReceivedEvent,
+    spend: ConfirmedSpendEvent,
     targetTreasuryAddress?: string
   ): Promise<SweepGateResult> {
     const store = this.config.store;
     const profile = store.getAgent(agentId);
     const treasury =
       targetTreasuryAddress ||
-      earnings.recipientAddress ||
+      spend.recipientAddress ||
       this.config.treasuryAddress ||
       '0x742d35Cc6634C0532925a3b844Bc454e4438f44e';
 
@@ -104,12 +114,12 @@ export class SweepGate {
       chain: 'base',
       protocol: 'keeperhub',
       destination: treasury,
-      amount: earnings.amount,
-      amountUsd: earnings.amountUsd,
-      tokenSymbol: earnings.tokenSymbol || 'USDC',
+      amount: spend.amount,
+      amountUsd: spend.amountUsd,
+      tokenSymbol: spend.tokenSymbol || 'USDC',
       metadata: {
-        taskId: earnings.taskId,
-        settlementTxHash: earnings.txHash,
+        taskId: spend.taskId,
+        settlementTxHash: spend.txHash,
         targetTreasury: treasury,
       },
     };
@@ -173,10 +183,10 @@ export class SweepGate {
     const idempotencyKey = `sweep_idem_${proposedAction.id}`;
     const workflowInput = {
       recipientAddress: treasury,
-      amount: earnings.amountUsd.toString(),
+      amount: spend.amountUsd.toString(),
       token: 'USDC',
       chain: 'base',
-      taskId: earnings.taskId,
+      taskId: spend.taskId,
     };
 
     try {
@@ -228,4 +238,7 @@ export class SweepGate {
       };
     }
   }
+
+  /** @deprecated Alias for backwards compatibility */
+  public handleEarningsReceived = this.handleConfirmedSpend;
 }

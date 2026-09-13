@@ -29,7 +29,7 @@ Throttle decouples the agent's task-claiming activities from downstream fund mov
                              │
                              ▼
  ═══════════════════════════════════════════════════════════════════════════════════
- TRIGGER: EarningsReceived Event Emitted { amount, txHash, taskId, timestamp }
+ TRIGGER: ConfirmedSpend Event Emitted { amount, txHash, taskId, timestamp }
  ═══════════════════════════════════════════════════════════════════════════════════
                              │
                              ▼
@@ -78,7 +78,7 @@ Originally, Throttle sought to use KeeperHub's `/api/agentic-wallet/sign` endpoi
 
 KeeperHub's `transfer-token` workflow step *can* move ERC-20 tokens (USDC on Base) from the organization's Turnkey wallet to any caller-specified recipient. We therefore moved KeeperHub's integration point one step downstream:
 - **Leg 1:** Agent self-signs outbound TaskMarket payment challenges directly.
-- **Leg 2:** Once task settlement is confirmed on-chain, Throttle's controller gates a KeeperHub-executed sweep into the organization's reserve or treasury address. This is the real, Turnkey-signed, tx-hash-bearing value movement KeeperHub executes.
+- **Leg 2:** Once task settlement is confirmed on-chain (emitting a `ConfirmedSpend` event), Throttle's controller gates a KeeperHub-executed sweep into the organization's reserve or treasury address. This is the real, Turnkey-signed, tx-hash-bearing value movement KeeperHub executes.
 
 ---
 

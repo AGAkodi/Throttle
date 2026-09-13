@@ -8,10 +8,10 @@
  * 2. Claims a task to trigger the HTTP 402 Payment Required challenge
  * 3. Signs the EIP-3009 TransferWithAuthorization directly with the agent's own wallet key
  * 4. Submits settlement claim to TaskMarket with PAYMENT-SIGNATURE
- * 5. Verifies confirmed settlement txHash and emits EarningsReceived event
+ * 5. Verifies confirmed settlement txHash and emits ConfirmedSpend event
  *
  * LEG 2 (Treasury Sweep — Throttle-Gated & KeeperHub-Executed):
- * 6. Evaluates EarningsReceived through Throttle Controller (Risk, Drift, Trust, Authority)
+ * 6. Evaluates ConfirmedSpend through Throttle Controller (Risk, Drift, Trust, Authority)
  * 7. SweepGate authorizes sweep into Treasury / Reserve address
  * 8. Dispatches KeeperHub execute_workflow with simulate: true preflight
  * 9. Executes KeeperHub workflow (Turnkey-signed transfer-token step)
@@ -25,7 +25,7 @@
 import crypto from 'crypto';
 import 'dotenv/config';
 import { ThrottleStore, createDefaultProfile, AuthorityLevel } from '@throttle/controller';
-import { SweepGate, EarningsReceivedEvent } from '@throttle/keeperhub-adapter';
+import { SweepGate, ConfirmedSpendEvent } from '@throttle/keeperhub-adapter';
 import { signTransferWithAuthorization, X402ChallengeData } from '@throttle/daydreams-adapter';
 
 interface TaskMarketTask {
@@ -338,12 +338,12 @@ async function main() {
   console.log(`[Leg 1 Complete] TaskMarket settlement confirmed! TxHash: ${settlement.txHash}`);
 
   // --------------------------------------------------------------------------
-  // TRIGGER: EarningsReceived Event Emission
+  // TRIGGER: ConfirmedSpend Event Emission (TaskMarket Claim Settlement)
   // --------------------------------------------------------------------------
   const rawUnits = BigInt(challengeResult.challenge.amount || '1000000');
   const amountUsd = Number(rawUnits) / 1_000_000;
 
-  const earningsEvent: EarningsReceivedEvent = {
+  const spendEvent: ConfirmedSpendEvent = {
     amount: challengeResult.challenge.amount || '1000000',
     amountUsd,
     txHash: settlement.txHash,
@@ -354,11 +354,11 @@ async function main() {
   };
 
   console.log('\n----------------------------------------------------------------');
-  console.log('TRIGGER: EarningsReceived Event Emitted');
+  console.log('TRIGGER: ConfirmedSpend Event Emitted (TaskMarket Claim Settlement)');
   console.log('----------------------------------------------------------------');
-  console.log(`  - Amount:     $${earningsEvent.amountUsd.toFixed(2)} (${earningsEvent.amount} raw units)`);
-  console.log(`  - Settlement: ${earningsEvent.txHash}`);
-  console.log(`  - Task ID:    ${earningsEvent.taskId}`);
+  console.log(`  - Amount:     $${spendEvent.amountUsd.toFixed(2)} (${spendEvent.amount} raw units)`);
+  console.log(`  - Settlement: ${spendEvent.txHash}`);
+  console.log(`  - Task ID:    ${spendEvent.taskId}`);
   console.log(`  - Treasury:   ${TREASURY_ADDRESS}`);
 
   // --------------------------------------------------------------------------
@@ -382,9 +382,9 @@ async function main() {
   });
 
   console.log('[Throttle Controller] Evaluating sweep action against policy, risk, drift, trust, and authority...');
-  const sweepResult = await sweepGate.handleEarningsReceived(
+  const sweepResult = await sweepGate.handleConfirmedSpend(
     'agent-spike-runner',
-    earningsEvent,
+    spendEvent,
     TREASURY_ADDRESS
   );
 

@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { ThrottleStore, createDefaultProfile, AuthorityLevel } from '@throttle/controller';
-import { SweepGate, EarningsReceivedEvent } from '../src/sweep-gate.js';
+import { SweepGate, ConfirmedSpendEvent } from '../src/sweep-gate.js';
 import { KeeperHubMcpClient } from '../src/mcp-client.js';
 
 describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
-  it('Sweep-Gate: Authorizes and executes KeeperHub sweep for compliant earnings', async () => {
+  it('Sweep-Gate: Authorizes and executes KeeperHub sweep for compliant confirmed spend', async () => {
     const store = new ThrottleStore(':memory:');
     const profile = createDefaultProfile('agent-sweep-test', 'SweepAgent');
     store.saveAgent(profile);
@@ -18,7 +18,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
       simulationMode: true,
     });
 
-    const earnings: EarningsReceivedEvent = {
+    const spend: ConfirmedSpendEvent = {
       amount: '5000000', // 5.0 USDC
       amountUsd: 5.0,
       txHash: '0xclaimsettlementtx12345',
@@ -27,7 +27,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
       tokenSymbol: 'USDC',
     };
 
-    const result = await sweepGate.handleEarningsReceived('agent-sweep-test', earnings);
+    const result = await sweepGate.handleConfirmedSpend('agent-sweep-test', spend);
 
     expect(result.status).toBe('executed');
     expect(result.txHash).toBeDefined();
@@ -56,7 +56,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
       simulationMode: true,
     });
 
-    const earnings: EarningsReceivedEvent = {
+    const spend: ConfirmedSpendEvent = {
       amount: '2000000', // 2.0 USDC
       amountUsd: 2.0,
       txHash: '0xclaimsettlementtx222',
@@ -65,7 +65,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
       tokenSymbol: 'USDC',
     };
 
-    const result = await sweepGate.handleEarningsReceived('agent-drifted', earnings);
+    const result = await sweepGate.handleConfirmedSpend('agent-drifted', spend);
 
     expect(result.status).toBe('held');
     expect(result.decision.action).toBe('hold');
@@ -90,7 +90,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
       simulationMode: true,
     });
 
-    const excessiveEarnings: EarningsReceivedEvent = {
+    const excessiveSpend: ConfirmedSpendEvent = {
       amount: '100000000', // 100.0 USDC (exceeds 10.0 single transfer cap)
       amountUsd: 100.0,
       txHash: '0xclaimsettlementtx333',
@@ -99,7 +99,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
       tokenSymbol: 'USDC',
     };
 
-    const result = await sweepGate.handleEarningsReceived('agent-sweep-violator', excessiveEarnings);
+    const result = await sweepGate.handleConfirmedSpend('agent-sweep-violator', excessiveSpend);
 
     expect(result.status).toBe('rejected');
     expect(result.decision.action).toBe('reject');
@@ -133,7 +133,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
       simulationMode: false,
     });
 
-    const earnings: EarningsReceivedEvent = {
+    const spend: ConfirmedSpendEvent = {
       amount: '1000000',
       amountUsd: 1.0,
       txHash: '0xtx123',
@@ -142,7 +142,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
       tokenSymbol: 'USDC',
     };
 
-    const result = await sweepGate.handleEarningsReceived('agent-loud-fail', earnings);
+    const result = await sweepGate.handleConfirmedSpend('agent-loud-fail', spend);
 
     expect(result.status).toBe('error');
     expect(result.errorMessage).toContain('KeeperHub upstream 503');
@@ -186,7 +186,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
       simulationMode: false,
     });
 
-    const earnings: EarningsReceivedEvent = {
+    const spend: ConfirmedSpendEvent = {
       amount: '3000000',
       amountUsd: 3.0,
       txHash: '0xclaimsettlementtx333',
@@ -195,7 +195,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
       tokenSymbol: 'USDC',
     };
 
-    const result = await sweepGate.handleEarningsReceived('agent-no-hash', earnings);
+    const result = await sweepGate.handleConfirmedSpend('agent-no-hash', spend);
 
     // Failures must be loud, never masked with fabricated txHash
     expect(result.status).toBe('error');

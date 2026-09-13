@@ -1,7 +1,11 @@
 import { privateKeyToAccount } from 'viem/accounts';
 import type { Hex } from 'viem';
 
-export interface EarningsReceivedEvent {
+/**
+ * Confirmed outbound spend event emitted when the agent successfully
+ * settles a TaskMarket claim fee via on-chain transaction.
+ */
+export interface ConfirmedSpendEvent {
   amount: string; // raw base units (e.g. "1000000" for 1 USDC)
   amountUsd: number;
   txHash: string;
@@ -10,6 +14,9 @@ export interface EarningsReceivedEvent {
   tokenSymbol: string;
   recipientAddress?: string;
 }
+
+/** @deprecated Alias for backwards compatibility */
+export type EarningsReceivedEvent = ConfirmedSpendEvent;
 
 export interface X402ChallengeData {
   chain?: string;

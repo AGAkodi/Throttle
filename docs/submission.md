@@ -8,7 +8,7 @@
 
 ### 2. Which project did you integrate with, and what does it do?
 We integrated with **[Daydreams](https://github.com/daydreamsai/daydreams)** (`lucid-agents` + [TaskMarket](https://taskmarket.dev)).  
-Daydreams is a framework for building autonomous agents that execute multi-step workflows. On TaskMarket, Daydreams agents discover tasks, bid on or claim bounties, and encounter HTTP 402 payment requirements settled via USDC on Base mainnet. Throttle acts as the external dynamic autonomy controller governing agent spend and gating KeeperHub-executed treasury sweeps of settled earnings.
+Daydreams is a framework for building autonomous agents that execute multi-step workflows. On TaskMarket, Daydreams agents discover tasks, bid on or claim bounties, and encounter HTTP 402 payment requirements settled via USDC on Base mainnet. Throttle acts as the external dynamic autonomy controller governing agent spend and gating a downstream KeeperHub-executed action triggered by the agent's own confirmed TaskMarket spend (the claim-fee settlement).
 
 ---
 
@@ -20,8 +20,8 @@ Daydreams is a framework for building autonomous agents that execute multi-step 
 > 
 > We therefore implemented a deliberate, principled two-leg structure:
 > - **Leg 1 (TaskMarket Settlement — Agent-Signed):** The outbound TaskMarket x402 payment is signed directly by the agent's own operating wallet key (`AGENT_WALLET_PRIVATE_KEY`) using standard EIP-3009 `TransferWithAuthorization`. KeeperHub is not involved in signing this arbitrary third-party payment.
-> - **Trigger:** Confirmed task settlement emits an `EarningsReceived` event.
-> - **Leg 2 (Treasury Sweep — Throttle-Gated & KeeperHub-Executed):** Throttle's controller evaluates the `EarningsReceived` event through its 5-layer pipeline (Policy, Risk, Drift, Trust, Authority). If authorized, Throttle calls KeeperHub's workflow execution engine to sweep the funds into the designated treasury address via a Turnkey-signed `transfer-token` step.
+> - **Trigger:** Confirmed task settlement emits a `ConfirmedSpend` event.
+> - **Leg 2 (Treasury Sweep — Throttle-Gated & KeeperHub-Executed):** Throttle's controller evaluates the `ConfirmedSpend` event through its 5-layer pipeline (Policy, Risk, Drift, Trust, Authority). If authorized, Throttle calls KeeperHub's workflow execution engine to execute an on-chain transfer/sweep from the organization's wallet into the designated treasury address via a Turnkey-signed `transfer-token` step.
 
 #### KeeperHub Surfaces Employed:
 1. **KeeperHub Workflow Execution Engine (`POST /api/workflows/{id}/execute` & `get_execution`):**  
@@ -45,6 +45,7 @@ Daydreams is a framework for building autonomous agents that execute multi-step 
 1. **Live Network Credentials for Leg 2 Sweep:** Live execution against `app.keeperhub.com` requires an active Organization API Key (`kh_...`) with write permissions and a deployed sweep workflow. Simulated mode (`--simulate`) verifies the complete schema and decision pipeline, but a live broadcast requires active credentials.
 2. **Human Approval UI Webhook:** In Level 4 (Approval Required), the sweep action is held in the controller store with `execution_status = 'pending'`. The operator confirms via the dashboard; real-time mobile/Telegram push webhooks are pending.
 3. **TaskMarket Task Submissions:** The autonomous agent handles task discovery, challenge signing, and settlement claim; full multi-step LLM task deliverable submission requires external API worker registration.
+4. **Deliberate Scope Choice (Confirmed Spend vs Inbound Reward Sweep):** Throttle evaluates the agent's confirmed on-chain spend on TaskMarket (the claim-fee settlement) as the trigger event evaluated by the controller and acted on by KeeperHub's sweep, rather than an inbound task reward received. Full reward-lifecycle handling (acting as both requester and worker to trigger a real payout via `/accept`) was considered and intentionally left out of the MVP scope. This cleanly demonstrates the identical dynamic authority-gating and downstream Turnkey execution pattern without fabricating artificial two-sided marketplace interactions.
 
 ---
 

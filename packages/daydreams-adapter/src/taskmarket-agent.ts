@@ -9,6 +9,7 @@ import { SignGate, X402ChallengePayload } from '@throttle/keeperhub-adapter';
 import {
   TaskMarketClient,
   TaskMarketTask,
+  ConfirmedSpendEvent,
   EarningsReceivedEvent,
   signTransferWithAuthorization,
   X402ChallengeData,
@@ -32,7 +33,9 @@ export interface TaskExecutionResult {
   authorityLevel: number;
   signature?: string;
   txHash?: string;
-  earningsReceived?: EarningsReceivedEvent;
+  confirmedSpend?: ConfirmedSpendEvent;
+  /** @deprecated Alias for confirmedSpend */
+  earningsReceived?: ConfirmedSpendEvent;
   error?: string;
 }
 
@@ -231,7 +234,7 @@ export class TaskMarketAgent {
     const rawUnits = BigInt(challenge.amount || '0');
     const amountUsd = Number(rawUnits) / 1_000_000;
 
-    const earningsReceived: EarningsReceivedEvent = {
+    const confirmedSpend: ConfirmedSpendEvent = {
       amount: challenge.amount || '0',
       amountUsd,
       txHash,
@@ -253,7 +256,8 @@ export class TaskMarketAgent {
       authorityLevel: profile.currentAuthorityLevel,
       signature: paymentSignature,
       txHash,
-      earningsReceived,
+      confirmedSpend,
+      earningsReceived: confirmedSpend,
     };
   }
 }
