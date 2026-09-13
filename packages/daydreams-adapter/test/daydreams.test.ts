@@ -234,4 +234,74 @@ describe('Daydreams / TaskMarket Adapter', () => {
     expect(result.earningsReceived?.txHash).toBe('0xrealconfirmedsettlementhash888');
     expect(result.earningsReceived?.tokenSymbol).toBe('USDC');
   });
+
+  it('fails loudly when settlement response lacks transaction hash without fabricating fallback', async () => {
+    const store = new ThrottleStore(':memory:');
+    const profile = createDefaultProfile('agent-no-txhash', 'NoTxHashAgent');
+    store.saveAgent(profile);
+
+    class MockTaskMarketNoHashClient extends TaskMarketClient {
+      constructor() {
+        super('http://mock-taskmarket.local');
+      }
+
+      public override async listOpenTasks() {
+        return [
+          {
+            id: 'task-no-hash-001',
+            title: 'No Hash Task',
+            type: 'bounty',
+            status: 'open' as const,
+            creatorAddress: '0x1234567890123456789012345678901234567890',
+            createdAt: new Date().toISOString(),
+          },
+        ];
+      }
+
+      public override async claimTask(_taskId: string, _workerAddress: string, paymentSignature?: string) {
+        if (!paymentSignature) {
+          return {
+            status: 402,
+            paymentRequired: true,
+            challenge: {
+              chain: 'base',
+              contract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+              payTo: '0x1234567890123456789012345678901234567890',
+              amount: '1000000',
+              validBefore: Math.floor(Date.now() / 1000) + 3600,
+              validAfter: Math.floor(Date.now() / 1000) - 60,
+              nonce: '0x1234567890abcdef',
+            },
+          };
+        }
+
+        // Return HTTP 200 with NO txHash
+        return {
+          status: 200,
+          paymentRequired: false,
+          data: {
+            success: true,
+            // intentionally omitting txHash, transactionHash, hash, and reference
+          },
+        };
+      }
+    }
+
+    const testPrivateKey = '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f361b97';
+    const mockClient = new MockTaskMarketNoHashClient();
+    const agent = new TaskMarketAgent({
+      agentId: 'agent-no-txhash',
+      workerAddress: '0x1234567890123456789012345678901234567890',
+      store,
+      client: mockClient,
+      agentPrivateKey: testPrivateKey,
+    });
+
+    const result = await agent.runCycle();
+
+    expect(result.success).toBe(false);
+    expect(result.stage).toBe('settlement');
+    expect(result.error).toContain('Refusing to fabricate one');
+  });
 });
+

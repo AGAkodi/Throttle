@@ -153,4 +153,79 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
     expect(failedRecord).toBeDefined();
     expect(failedRecord?.errorMessage).toContain('KeeperHub upstream 503');
   });
+
+  it('Sweep-Gate: Refuses to fabricate txHash and records failed action when execution succeeds without txHash', async () => {
+    const store = new ThrottleStore(':memory:');
+    const profile = createDefaultProfile('agent-no-hash', 'NoHashAgent');
+    store.saveAgent(profile);
+
+    class NoTxHashMcpClient extends KeeperHubMcpClient {
+      constructor() {
+        super({ apiKey: 'mock_key' });
+      }
+
+      public override async executeWorkflow() {
+        return {
+          executionId: 'exec-no-hash-99',
+          status: 'success' as const,
+        };
+      }
+
+      public override async getExecution(executionId: string) {
+        return {
+          executionId,
+          status: 'success' as const,
+          // Explicitly no txHash or transactionHashes
+        };
+      }
+    }
+
+    const sweepGate = new SweepGate({
+      store,
+      mcpClient: new NoTxHashMcpClient(),
+      simulationMode: false,
+    });
+
+    const earnings: EarningsReceivedEvent = {
+      amount: '3000000',
+      amountUsd: 3.0,
+      txHash: '0xclaimsettlementtx333',
+      taskId: 'task-no-hash',
+      timestamp: Date.now(),
+      tokenSymbol: 'USDC',
+    };
+
+    const result = await sweepGate.handleEarningsReceived('agent-no-hash', earnings);
+
+    // Failures must be loud, never masked with fabricated txHash
+    expect(result.status).toBe('error');
+    expect(result.txHash).toBeUndefined();
+    expect(result.errorMessage).toContain(
+      '[SweepGate] Workflow execution exec-no-hash-99 reported success but returned no transaction hash. Refusing to fabricate one.'
+    );
+
+    // Action record must be recorded as 'failed' with the real error message
+    const records = store.getActionRecords('agent-no-hash');
+    expect(records.length).toBe(1);
+    const failedRecord = records[0];
+    expect(failedRecord.executionStatus).toBe('failed');
+    expect(failedRecord.errorMessage).toContain('Refusing to fabricate one');
+  });
+
+  it('KeeperHubMcpClient: simulateTransfer and executeTransfer stubs are deleted', () => {
+    const client = new KeeperHubMcpClient({ apiKey: 'mock_key' });
+
+    // Runtime assertion: stubs must be completely deleted
+    expect((client as any).simulateTransfer).toBeUndefined();
+    expect((client as any).executeTransfer).toBeUndefined();
+
+    // Compile-time type check: properties must not exist on KeeperHubMcpClient type
+    type HasSimulate = 'simulateTransfer' extends keyof KeeperHubMcpClient ? true : false;
+    type HasExecute = 'executeTransfer' extends keyof KeeperHubMcpClient ? true : false;
+    const hasSimulate: HasSimulate = false;
+    const hasExecute: HasExecute = false;
+    expect(hasSimulate).toBe(false);
+    expect(hasExecute).toBe(false);
+  });
 });
+

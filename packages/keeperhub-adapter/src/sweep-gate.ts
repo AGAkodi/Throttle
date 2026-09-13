@@ -199,7 +199,13 @@ export class SweepGate {
 
       // Step C: Poll get_execution to confirm completion and retrieve txHash
       const execStatus = await this.mcpClient.getExecution(execution.executionId);
-      const txHash = execStatus.txHash || execution.txHash || `0xsweep_${Date.now()}`;
+      const txHash = execStatus.txHash || execution.txHash;
+      if (!txHash) {
+        throw new Error(
+          `[SweepGate] Workflow execution ${execution.executionId} reported success ` +
+          `but returned no transaction hash. Refusing to fabricate one.`
+        );
+      }
 
       const record = createActionRecord(proposedAction, decision, 'executed', txHash);
       store.saveActionRecord(record);

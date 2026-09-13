@@ -38,14 +38,6 @@ export interface ExecutionStatusResult {
   raw?: any;
 }
 
-export interface DirectTransferParams {
-  to: string;
-  amount: string;
-  token: string;
-  chain: string;
-  idempotencyKey?: string;
-}
-
 export class KeeperHubMcpClient {
   private config: KeeperHubMcpClientConfig;
 
@@ -202,25 +194,5 @@ export class KeeperHubMcpClient {
     throw new Error(`[KeeperHub MCP] Workflow execution ${executionId} timed out after ${maxWaitMs}ms`);
   }
 
-  /**
-   * Dry-run simulation of a direct transfer.
-   */
-  public async simulateTransfer(params: DirectTransferParams): Promise<{ allowed: boolean; estimatedFeeUsd?: number; gas?: string }> {
-    return {
-      allowed: true,
-      estimatedFeeUsd: 0.002,
-      gas: '21000',
-    };
-  }
-
-  /**
-   * Executes transfer with idempotency key after simulation passes.
-   */
-  public async executeTransfer(params: DirectTransferParams): Promise<{ executionId: string; status: 'submitted' | 'completed' }> {
-    const key = params.idempotencyKey || `idem_${crypto.randomBytes(16).toString('hex')}`;
-    return {
-      executionId: `exec_${Date.now()}`,
-      status: 'completed',
-    };
-  }
 }
+

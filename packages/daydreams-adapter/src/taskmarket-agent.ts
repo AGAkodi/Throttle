@@ -209,8 +209,24 @@ export class TaskMarketAgent {
       settledClaim.data?.txHash ||
       settledClaim.data?.transactionHash ||
       settledClaim.data?.hash ||
-      settledClaim.data?.reference ||
-      `0xsettled_${Date.now()}`;
+      settledClaim.data?.reference;
+
+    if (!txHash) {
+      this.emitter.emit({
+        agentId,
+        actionId: candidateTask.id,
+        type: 'failure',
+        error: 'TaskMarket claim settlement response missing transaction hash/reference',
+      });
+      return {
+        taskId: candidateTask.id,
+        success: false,
+        stage: 'settlement',
+        authorityLevel: profile.currentAuthorityLevel,
+        signature: paymentSignature,
+        error: 'TaskMarket claim settlement response missing transaction hash. Refusing to fabricate one.',
+      };
+    }
 
     const rawUnits = BigInt(challenge.amount || '0');
     const amountUsd = Number(rawUnits) / 1_000_000;

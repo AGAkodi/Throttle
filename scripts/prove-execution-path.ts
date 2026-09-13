@@ -270,8 +270,21 @@ async function settleTaskMarketClaim(
     parsed?.data?.txHash ||
     parsed?.data?.hash ||
     parsed?.reference ||
-    parsed?.claimId ||
-    `0xsettled_${Date.now()}`;
+    parsed?.claimId;
+
+  if (!txHash) {
+    if (IS_SIMULATE) {
+      return {
+        success: true,
+        status: res.status,
+        txHash: `0xsim_settled_${Date.now()}`,
+        data: parsed,
+      };
+    }
+    console.error(`\n[FATAL] TaskMarket claim settlement succeeded with HTTP ${res.status} but returned no txHash, hash, or reference. Refusing to fabricate one.`);
+    console.error('Response payload:', parsed);
+    process.exit(1);
+  }
 
   return {
     success: true,
