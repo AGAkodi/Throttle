@@ -86,7 +86,7 @@ export class TaskMarketAgent {
 
     // Step 2: Fetch open tasks
     const tasks = await client.listOpenTasks();
-    const candidateTask = tasks.find((t) => t.status === 'open');
+    const candidateTask = tasks.find((t) => t.status === 'open' && t.mode === 'claim');
 
     if (!candidateTask) {
       return {
@@ -94,7 +94,7 @@ export class TaskMarketAgent {
         success: false,
         stage: 'discovery',
         authorityLevel: profile.currentAuthorityLevel,
-        error: 'No open tasks available on TaskMarket',
+        error: 'no open claim-mode tasks available',
       };
     }
 

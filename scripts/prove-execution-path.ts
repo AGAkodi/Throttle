@@ -94,11 +94,12 @@ async function listOpenTasks(): Promise<TaskMarketTask[]> {
     process.exit(1);
   }
 
-  const openTasks = tasks.filter((t) => t.status === 'open');
-  console.log(`[TaskMarket] Found ${tasks.length} total tasks (${openTasks.length} open).`);
+  const openTasks = tasks.filter((t) => t.status === 'open' && t.mode === 'claim');
+  console.log(`[TaskMarket] Found ${tasks.length} total tasks (${openTasks.length} open claim-mode).`);
 
   if (openTasks.length === 0) {
-    console.error(`\n[FATAL] No open tasks available on TaskMarket (all ${tasks.length} tasks are closed/completed).`);
+    console.error(`\n[FATAL] No open claim-mode tasks available on TaskMarket (out of ${tasks.length} tasks).`);
+    console.error(`All ${tasks.filter((t) => t.status === 'open').length} currently open tasks are mode: 'bounty', which require inline signatures rather than the HTTP 402 challenge-then-sign handshake.`);
     process.exit(1);
   }
 

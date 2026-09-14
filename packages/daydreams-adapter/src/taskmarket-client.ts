@@ -87,6 +87,8 @@ export interface TaskMarketTask {
   description?: string;
   type: string;
   status: 'open' | 'claimed' | 'completed' | 'cancelled';
+  mode?: 'claim' | 'bounty' | string;
+  reward?: string;
   rewardUsd?: number;
   bountyUsd?: number;
   creatorAddress: string;
