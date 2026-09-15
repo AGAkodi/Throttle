@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { fetchAgents, fetchActions, AgentProfile, ActionRecord } from './lib/api-client.js';
+import React, { useState, useEffect, useCallback } from 'react';
+import { fetchAgents, fetchActions, subscribeToTelemetry, AgentProfile, ActionRecord, getApiBase } from './lib/api-client.js';
 import { AgentStatus } from './pages/AgentStatus.js';
 import { ActivityFeed } from './pages/ActivityFeed.js';
 import { DecisionDetail } from './pages/DecisionDetail.js';
@@ -8,25 +8,77 @@ export const App: React.FC = () => {
   const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [actions, setActions] = useState<ActionRecord[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<ActionRecord | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'feed' | 'explain'>('overview');
+  const [isConnected, setIsConnected] = useState<boolean>(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  const loadData = async () => {
-    const loadedAgents = await fetchAgents();
-    const loadedActions = await fetchActions();
-    setAgents(loadedAgents);
-    setActions(loadedActions);
-    if (!selectedRecord && loadedActions.length > 0) {
-      setSelectedRecord(loadedActions[0]);
+  const loadData = useCallback(async () => {
+    try {
+      const [loadedAgents, loadedActions] = await Promise.all([
+        fetchAgents(),
+        fetchActions(),
+      ]);
+      setAgents(loadedAgents);
+      setActions(loadedActions);
+      setIsConnected(true);
+      setConnectionError(null);
+      setSelectedRecord((prev) => {
+        if (!prev && loadedActions.length > 0) return loadedActions[0];
+        if (prev && loadedActions.some((a) => a.id === prev.id)) return prev;
+        return loadedActions[0] || null;
+      });
+    } catch (err) {
+      setIsConnected(false);
+      setConnectionError((err as Error).message);
     }
-  };
-
-  useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 3000); // 3s polling refresh
-    return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    // Initial fetch
+    loadData();
+
+    // SSE real-time push subscription
+    const unsubscribe = subscribeToTelemetry((payload) => {
+      setIsConnected(true);
+      setConnectionError(null);
+
+      if (payload.record) {
+        setActions((prev) => {
+          const exists = prev.some((a) => a.id === payload.record!.id);
+          if (exists) {
+            return prev.map((a) => (a.id === payload.record!.id ? payload.record! : a));
+          }
+          return [payload.record!, ...prev];
+        });
+        setSelectedRecord((prev) => prev || payload.record!);
+      }
+
+      if (payload.agent) {
+        setAgents((prev) => {
+          const idx = prev.findIndex((a) => a.agentId === payload.agent!.agentId);
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = payload.agent!;
+            return copy;
+          }
+          return [payload.agent!, ...prev];
+        });
+      }
+    }, () => {
+      // Stream error handler
+    });
+
+    // 3s fallback polling for resilience
+    const interval = setInterval(loadData, 3000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
+  }, [loadData]);
+
   const activeAgent = agents[0] || null;
+  const latestAction = actions[0] || null;
+  const apiBase = getApiBase();
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -69,7 +121,7 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Integration Badges */}
+        {/* Integration & Telemetry Status Badges */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span
@@ -77,12 +129,13 @@ export const App: React.FC = () => {
                 width: '8px',
                 height: '8px',
                 borderRadius: '50%',
-                backgroundColor: 'var(--lvl-0)',
-                boxShadow: '0 0 8px var(--lvl-0)',
+                backgroundColor: isConnected ? 'var(--lvl-0)' : 'var(--lvl-4)',
+                boxShadow: isConnected ? '0 0 8px var(--lvl-0)' : '0 0 8px var(--lvl-4)',
+                transition: 'all 0.3s ease',
               }}
             />
             <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)' }}>
-              Live Interception Active
+              {isConnected ? `Live Telemetry Active (${apiBase})` : 'Connecting to Controller...'}
             </span>
           </div>
 
@@ -104,10 +157,29 @@ export const App: React.FC = () => {
 
       {/* Main Content Layout */}
       <main style={{ flex: 1, padding: '24px 32px', maxWidth: '1440px', margin: '0 auto', width: '100%' }}>
+        {connectionError && !activeAgent && (
+          <div
+            style={{
+              marginBottom: '20px',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid var(--lvl-5)',
+              color: 'var(--lvl-5)',
+              fontSize: '13px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <span>Controller unreachable on {apiBase}. Start with <code>pnpm dev:controller</code> to stream live state.</span>
+          </div>
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px' }}>
           {/* Left Column: Agent Status & Gauges */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <AgentStatus agent={activeAgent} />
+            <AgentStatus agent={activeAgent} latestAction={latestAction} isConnected={isConnected} />
           </div>
 
           {/* Right Column: Live Feed & Explainability View */}

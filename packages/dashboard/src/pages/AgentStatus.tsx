@@ -1,16 +1,33 @@
 import React from 'react';
-import { AgentProfile } from '../lib/api-client.js';
+import { AgentProfile, ActionRecord } from '../lib/api-client.js';
 import { AuthorityGauge } from '../components/AuthorityGauge.js';
 import { TrustRiskChart } from '../components/TrustRiskChart.js';
 
 interface AgentStatusProps {
   agent: AgentProfile | null;
+  latestAction?: ActionRecord | null;
+  isConnected?: boolean;
 }
 
-export const AgentStatus: React.FC<AgentStatusProps> = ({ agent }) => {
+export const AgentStatus: React.FC<AgentStatusProps> = ({ agent, latestAction, isConnected = true }) => {
   if (!agent) {
-    return <div className="glass-panel" style={{ padding: '24px' }}>Loading agent state...</div>;
+    return (
+      <div className="glass-panel" style={{ padding: '32px', textAlign: 'center' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
+          {isConnected ? 'No Agent Registered Yet' : 'Connecting to Throttle Controller...'}
+        </h3>
+        <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+          {isConnected
+            ? 'Execute an agent task or run a simulation to register state in the SQLite store.'
+            : 'Awaiting connection to controller on http://localhost:4000. Start the server with `pnpm dev:controller`.'}
+        </p>
+      </div>
+    );
   }
+
+  const hasActions = Boolean(latestAction && latestAction.decision);
+  const realRiskScore = hasActions ? latestAction!.decision.riskAssessment.score : 0;
+  const realDriftDetected = hasActions ? latestAction!.decision.driftSignals.detected : false;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -83,8 +100,9 @@ export const AgentStatus: React.FC<AgentStatusProps> = ({ agent }) => {
       {/* Trust & Drift Cards */}
       <TrustRiskChart
         trustScore={agent.trustScore.current}
-        riskScore={agent.currentAuthorityLevel >= 3 ? 65 : 15}
-        driftDetected={agent.currentAuthorityLevel >= 3}
+        riskScore={realRiskScore}
+        driftDetected={realDriftDetected}
+        awaitingFirstExecution={!hasActions && agent.metrics.totalActions === 0}
       />
     </div>
   );

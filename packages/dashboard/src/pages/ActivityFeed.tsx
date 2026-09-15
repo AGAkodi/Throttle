@@ -22,7 +22,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({ actions, onSelectAct
 
       {actions.length === 0 ? (
         <div className="glass-panel" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
-          No intercepted actions logged yet. Run an agent cycle or simulation script.
+          No actions evaluated yet — run the agent or simulation to see live decisions.
         </div>
       ) : (
         actions.map((record) => (

@@ -128,6 +128,21 @@ export function createControllerServer(options: ServerOptions): ThrottleServer {
       return;
     }
 
+    // POST /api/broadcast: Broadcast an event (e.g. from runner script or external gate) to SSE clients
+    if (req.method === 'POST' && url.pathname === '/api/broadcast') {
+      readJsonBody()
+        .then(body => {
+          broadcast(body);
+          res.writeHead(200);
+          res.end(JSON.stringify({ success: true }));
+        })
+        .catch(err => {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Broadcast failed', message: (err as Error).message }));
+        });
+      return;
+    }
+
     // POST /api/evaluate: Real-time evaluation of a proposed action
     if (req.method === 'POST' && url.pathname === '/api/evaluate') {
       readJsonBody()

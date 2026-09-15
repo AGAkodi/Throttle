@@ -96,9 +96,13 @@ async function main() {
   console.log('LEG 1: TASKMARKET TASK CREATION SETTLEMENT (AGENT-SIGNED X402)');
   console.log('----------------------------------------------------------------');
 
-  const store = new ThrottleStore(':memory:');
-  const agentProfile = createDefaultProfile('agent-spike-runner', 'ThrottleDemoAgent');
-  store.saveAgent(agentProfile);
+  const dbPath = process.env.CONTROLLER_DB_PATH || './data/throttle.sqlite';
+  const store = new ThrottleStore(dbPath);
+  let agentProfile = store.getAgent('agent-spike-runner');
+  if (!agentProfile) {
+    agentProfile = createDefaultProfile('agent-spike-runner', 'Daydreams Agent Alpha (Spike Runner)');
+    store.saveAgent(agentProfile);
+  }
 
   let client: TaskMarketClient;
   if (IS_SIMULATE) {
@@ -193,6 +197,25 @@ async function main() {
 
   console.log(`[KeeperHub Sweep] Execution ID: ${sweepResult.executionId}`);
   console.log(`[KeeperHub Sweep] Sweep TxHash: ${sweepResult.txHash}`);
+
+  // Best-effort notify running controller server to broadcast immediately to open dashboards
+  try {
+    const serverUrl = process.env.VITE_CONTROLLER_API_URL || 'http://localhost:4000';
+    const latestActions = store.getActionRecords('agent-spike-runner', 1);
+    if (latestActions.length > 0) {
+      await fetch(`${serverUrl}/api/broadcast`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'action_evaluated',
+          record: latestActions[0],
+          agent: store.getAgent('agent-spike-runner'),
+        }),
+      });
+    }
+  } catch {
+    // Controller server not currently active; persistence in SQLite is already saved
+  }
 
   // --------------------------------------------------------------------------
   // SUMMARY

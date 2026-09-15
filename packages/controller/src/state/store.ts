@@ -39,6 +39,9 @@ export class ThrottleStore {
     }
 
     this.db = new DatabaseSync(dbPath);
+    if (dbPath !== ':memory:') {
+      this.db.exec('PRAGMA journal_mode = WAL;');
+    }
     this.initSchema();
   }
 
