@@ -14,7 +14,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
       keeperHubApiKey: 'mock_key',
       keeperHubBaseUrl: 'https://app.keeperhub.com',
       sweepWorkflowId: 'wf-treasury-sweep',
-      treasuryAddress: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+      treasuryAddress: '0xa8dA1FE17cf59ECd4098A4b3Df7894A4456517c4',
       simulationMode: true,
     });
 
@@ -53,6 +53,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
     const sweepGate = new SweepGate({
       store,
       keeperHubApiKey: 'mock_key',
+      treasuryAddress: '0xa8dA1FE17cf59ECd4098A4b3Df7894A4456517c4',
       simulationMode: true,
     });
 
@@ -87,6 +88,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
     const sweepGate = new SweepGate({
       store,
       keeperHubApiKey: 'mock_key',
+      treasuryAddress: '0xa8dA1FE17cf59ECd4098A4b3Df7894A4456517c4',
       simulationMode: true,
     });
 
@@ -130,6 +132,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
     const sweepGate = new SweepGate({
       store,
       mcpClient: new ErroringMcpClient(),
+      treasuryAddress: '0xa8dA1FE17cf59ECd4098A4b3Df7894A4456517c4',
       simulationMode: false,
     });
 
@@ -183,6 +186,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
     const sweepGate = new SweepGate({
       store,
       mcpClient: new NoTxHashMcpClient(),
+      treasuryAddress: '0xa8dA1FE17cf59ECd4098A4b3Df7894A4456517c4',
       simulationMode: false,
     });
 
@@ -226,6 +230,43 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
     const hasExecute: HasExecute = false;
     expect(hasSimulate).toBe(false);
     expect(hasExecute).toBe(false);
+  });
+
+  it('SweepGate: Fails loudly if treasury address is not configured anywhere', async () => {
+    const origEnv = process.env.THROTTLE_TREASURY_ADDRESS;
+    const origFallback = process.env.TREASURY_ADDRESS;
+    delete process.env.THROTTLE_TREASURY_ADDRESS;
+    delete process.env.TREASURY_ADDRESS;
+
+    try {
+      const store = new ThrottleStore(':memory:');
+      const profile = createDefaultProfile('agent-no-treasury', 'NoTreasuryAgent');
+      store.saveAgent(profile);
+
+      const sweepGate = new SweepGate({
+        store,
+        keeperHubApiKey: 'mock_key',
+        keeperHubBaseUrl: 'https://app.keeperhub.com',
+        sweepWorkflowId: 'wf-treasury-sweep',
+        simulationMode: true,
+      });
+
+      const spend: ConfirmedSpendEvent = {
+        amount: '10000',
+        amountUsd: 0.01,
+        txHash: '0xmockhash',
+        taskId: 'task-no-treasury',
+        timestamp: Date.now(),
+        tokenSymbol: 'USDC',
+      };
+
+      await expect(sweepGate.handleConfirmedSpend('agent-no-treasury', spend)).rejects.toThrow(
+        /Missing required treasury address/
+      );
+    } finally {
+      if (origEnv) process.env.THROTTLE_TREASURY_ADDRESS = origEnv;
+      if (origFallback) process.env.TREASURY_ADDRESS = origFallback;
+    }
   });
 });
 

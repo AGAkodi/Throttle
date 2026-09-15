@@ -79,19 +79,36 @@ export class KeeperHubMcpClient {
     const baseUrl = (this.config.baseUrl || 'https://app.keeperhub.com').replace(/\/$/, '');
     const url = `${baseUrl}/api/workflows/${params.workflowId}/execute`;
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${this.config.apiKey}`,
-        'X-Idempotency-Key': idempotencyKey,
-      },
-      body: JSON.stringify({
-        input: inputPayload,
-        simulate: false,
-      }),
-    });
+    let res: Response | null = null;
+    let lastErr: any = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${this.config.apiKey}`,
+            'X-Idempotency-Key': idempotencyKey,
+          },
+          body: JSON.stringify({
+            input: inputPayload,
+          }),
+        });
+        break;
+      } catch (err: any) {
+        lastErr = err;
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, 1500));
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!res) {
+      throw lastErr || new Error(`[KeeperHub MCP] Failed to connect to ${url}`);
+    }
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
@@ -149,16 +166,23 @@ export class KeeperHubMcpClient {
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxWaitMs) {
-      const res = await fetch(`${baseUrl}/api/executions/${executionId}`, {
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'Accept': 'application/json',
-        },
-      });
+      let res: Response | null = null;
+      try {
+        res = await fetch(`${baseUrl}/api/workflows/executions/${executionId}/status`, {
+          headers: {
+            'Authorization': `Bearer ${this.config.apiKey}`,
+            'Accept': 'application/json',
+          },
+        });
+      } catch {
+        // Network blip while polling status, wait and retry on next interval
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+        continue;
+      }
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
-        throw new Error(`[KeeperHub MCP] GET /api/executions/${executionId} failed with HTTP ${res.status}: ${errText}`);
+        throw new Error(`[KeeperHub MCP] GET /api/workflows/executions/${executionId}/status failed with HTTP ${res.status}: ${errText}`);
       }
 
       const body = await res.json() as any;

@@ -54,21 +54,13 @@ describe('Daydreams / TaskMarket Adapter', () => {
     expect(successUpdated?.metrics.recentRetries).toBe(0); // reset on success
   });
 
-  it('runs end-to-end task cycle through TaskMarketAgent with SignGate authorization', async () => {
+  it('runs end-to-end task cycle through TaskMarketAgent with canonical EIP-191 claim signing', async () => {
     const store = new ThrottleStore(':memory:');
     const profile = createDefaultProfile('agent-cycle-test', 'CycleAgent');
     store.saveAgent(profile);
 
-    const signGate = new SignGate({
-      store,
-      keeperHubBaseUrl: 'https://app.keeperhub.com',
-      keeperHubHmacSecret: 'mock_secret',
-      keeperHubSubOrgId: 'mock_sub_org',
-      simulationMode: true,
-    });
-
     class MockTaskMarketClient extends TaskMarketClient {
-      public claimsMade: Array<{ taskId: string; workerAddress: string; paymentSignature?: string }> = [];
+      public claimsMade: Array<{ taskId: string; workerAddress: string; signature: string }> = [];
 
       constructor() {
         super('http://mock-taskmarket.local');
@@ -82,51 +74,36 @@ describe('Daydreams / TaskMarket Adapter', () => {
             type: 'bounty',
             mode: 'claim' as const,
             status: 'open' as const,
+            reward: '10000',
             creatorAddress: '0x1234567890123456789012345678901234567890',
             createdAt: new Date().toISOString(),
           },
         ];
       }
 
-      public override async claimTask(taskId: string, workerAddress: string, paymentSignature?: string) {
-        this.claimsMade.push({ taskId, workerAddress, paymentSignature });
+      public override async claimTask(taskId: string, workerAddress: string, signature: string) {
+        this.claimsMade.push({ taskId, workerAddress, signature });
 
-        if (!paymentSignature) {
-          // Return 402 challenge
-          return {
-            status: 402,
-            paymentRequired: true,
-            challenge: {
-              chain: 'base',
-              contract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-              payTo: '0x1234567890123456789012345678901234567890',
-              amount: '1000000',
-              validBefore: Math.floor(Date.now() / 1000) + 3600,
-              validAfter: Math.floor(Date.now() / 1000) - 60,
-              nonce: '0x1234567890abcdef',
-            },
-          };
-        }
-
-        // Settled with signature
         return {
           status: 200,
-          paymentRequired: false,
+          success: true,
+          claimId: 'claim-123-abc',
           data: {
             success: true,
-            txHash: '0xmocksettlementtxhash999',
+            claimId: 'claim-123-abc',
           },
         };
       }
     }
 
+    const testPrivateKey = '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f361b97';
     const mockClient = new MockTaskMarketClient();
     const agent = new TaskMarketAgent({
       agentId: 'agent-cycle-test',
       workerAddress: '0x1234567890123456789012345678901234567890',
       store,
-      signGate,
       client: mockClient,
+      agentPrivateKey: testPrivateKey,
     });
 
     const result = await agent.runCycle();
@@ -135,30 +112,23 @@ describe('Daydreams / TaskMarket Adapter', () => {
     expect(result.success).toBe(true);
     expect(result.stage).toBe('settlement');
     expect(result.signature).toBeDefined();
+    expect(result.signature?.startsWith('0x')).toBe(true);
     expect(result.authorityLevel).toBe(AuthorityLevel.FULL_AUTONOMY);
     expect(result.taskId).toBe('task-deterministic-001');
+    expect(result.claimId).toBe('claim-123-abc');
 
-    // 2. Client interaction: two calls (challenge, then settlement with signature)
-    expect(mockClient.claimsMade).toHaveLength(2);
-    expect(mockClient.claimsMade[0].paymentSignature).toBeUndefined();
-    expect(mockClient.claimsMade[1].paymentSignature).toBe(result.signature);
+    // 2. Client interaction: exactly ONE call with EIP-191 signature directly
+    expect(mockClient.claimsMade).toHaveLength(1);
+    expect(mockClient.claimsMade[0].signature).toBe(result.signature);
+    expect(mockClient.claimsMade[0].workerAddress).toBe('0x1234567890123456789012345678901234567890');
 
-    // 3. Action record persisted in store
-    const records = store.getActionRecords('agent-cycle-test');
-    expect(records.length).toBeGreaterThan(0);
-    const execRecord = records.find((r) => r.executionStatus === 'executed');
-    expect(execRecord).toBeDefined();
-    expect(execRecord?.executionTxHash).toBe(result.signature);
-    expect(execRecord?.action.amountUsd).toBe(1.0);
-    expect(execRecord?.action.destination).toBe('0x1234567890123456789012345678901234567890');
-
-    // 4. Telemetry metrics updated
+    // 3. Telemetry metrics updated
     const updatedProfile = store.getAgent('agent-cycle-test');
     expect(updatedProfile?.metrics.totalActions).toBeGreaterThanOrEqual(1);
     expect(updatedProfile?.metrics.successfulActions).toBeGreaterThanOrEqual(1);
   });
 
-  it('signs outbound payment directly with agent private key and emits ConfirmedSpend event', async () => {
+  it('signs canonical claim message directly with agent private key and emits ConfirmedSpend event', async () => {
     const store = new ThrottleStore(':memory:');
     const profile = createDefaultProfile('agent-self-sign', 'SelfSignAgent');
     store.saveAgent(profile);
@@ -176,34 +146,21 @@ describe('Daydreams / TaskMarket Adapter', () => {
             type: 'bounty',
             mode: 'claim' as const,
             status: 'open' as const,
+            reward: '2500000', // 2.5 USDC
             creatorAddress: '0x1234567890123456789012345678901234567890',
             createdAt: new Date().toISOString(),
           },
         ];
       }
 
-      public override async claimTask(taskId: string, workerAddress: string, paymentSignature?: string) {
-        if (!paymentSignature) {
-          return {
-            status: 402,
-            paymentRequired: true,
-            challenge: {
-              chain: 'base',
-              contract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-              payTo: '0x1234567890123456789012345678901234567890',
-              amount: '2500000', // 2.5 USDC
-              validBefore: Math.floor(Date.now() / 1000) + 3600,
-              validAfter: Math.floor(Date.now() / 1000) - 60,
-              nonce: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-            },
-          };
-        }
-
+      public override async claimTask(taskId: string, workerAddress: string, signature: string) {
         return {
           status: 200,
-          paymentRequired: false,
+          success: true,
+          claimId: 'claim-direct-001',
           data: {
             success: true,
+            claimId: 'claim-direct-001',
             txHash: '0xrealconfirmedsettlementhash888',
           },
         };
@@ -237,12 +194,12 @@ describe('Daydreams / TaskMarket Adapter', () => {
     expect(result.confirmedSpend?.tokenSymbol).toBe('USDC');
   });
 
-  it('fails loudly when settlement response lacks transaction hash without fabricating fallback', async () => {
+  it('fails loudly when claim call returns an error', async () => {
     const store = new ThrottleStore(':memory:');
-    const profile = createDefaultProfile('agent-no-txhash', 'NoTxHashAgent');
+    const profile = createDefaultProfile('agent-fail-claim', 'FailClaimAgent');
     store.saveAgent(profile);
 
-    class MockTaskMarketNoHashClient extends TaskMarketClient {
+    class MockTaskMarketFailClient extends TaskMarketClient {
       constructor() {
         super('http://mock-taskmarket.local');
       }
@@ -250,8 +207,8 @@ describe('Daydreams / TaskMarket Adapter', () => {
       public override async listOpenTasks() {
         return [
           {
-            id: 'task-no-hash-001',
-            title: 'No Hash Task',
+            id: 'task-fail-001',
+            title: 'Fail Task',
             type: 'bounty',
             mode: 'claim' as const,
             status: 'open' as const,
@@ -261,39 +218,23 @@ describe('Daydreams / TaskMarket Adapter', () => {
         ];
       }
 
-      public override async claimTask(_taskId: string, _workerAddress: string, paymentSignature?: string) {
-        if (!paymentSignature) {
-          return {
-            status: 402,
-            paymentRequired: true,
-            challenge: {
-              chain: 'base',
-              contract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-              payTo: '0x1234567890123456789012345678901234567890',
-              amount: '1000000',
-              validBefore: Math.floor(Date.now() / 1000) + 3600,
-              validAfter: Math.floor(Date.now() / 1000) - 60,
-              nonce: '0x1234567890abcdef',
-            },
-          };
-        }
-
-        // Return HTTP 200 with NO txHash
+      public override async claimTask(_taskId: string, _workerAddress: string, _signature: string) {
         return {
-          status: 200,
-          paymentRequired: false,
+          status: 400,
+          success: false,
+          error: 'Task not available for claiming',
           data: {
-            success: true,
-            // intentionally omitting txHash, transactionHash, hash, and reference
+            message: 'Task not available for claiming',
+            code: 'BAD_REQUEST',
           },
         };
       }
     }
 
     const testPrivateKey = '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f361b97';
-    const mockClient = new MockTaskMarketNoHashClient();
+    const mockClient = new MockTaskMarketFailClient();
     const agent = new TaskMarketAgent({
-      agentId: 'agent-no-txhash',
+      agentId: 'agent-fail-claim',
       workerAddress: '0x1234567890123456789012345678901234567890',
       store,
       client: mockClient,
@@ -304,7 +245,60 @@ describe('Daydreams / TaskMarket Adapter', () => {
 
     expect(result.success).toBe(false);
     expect(result.stage).toBe('settlement');
-    expect(result.error).toContain('Refusing to fabricate one');
+    expect(result.error).toContain('Task not available for claiming');
+  });
+
+  it('runs task creation cycle and builds ConfirmedSpendEvent from confirmed task settlement', async () => {
+    const store = new ThrottleStore(':memory:');
+    const profile = createDefaultProfile('agent-creation-test', 'CreationAgent');
+    store.saveAgent(profile);
+
+    class MockTaskMarketCreationClient extends TaskMarketClient {
+      constructor() {
+        super('http://mock-taskmarket.local');
+      }
+
+      public override async createAndSettleTask() {
+        return {
+          taskId: 'task-created-999',
+          txHash: '0xconfirmedescrowtxhash999',
+          intentId: 'intent-uuid-1234',
+          status: 'created',
+        };
+      }
+    }
+
+    const testPrivateKey = '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f361b97';
+    const mockClient = new MockTaskMarketCreationClient();
+    const agent = new TaskMarketAgent({
+      agentId: 'agent-creation-test',
+      workerAddress: '0x1234567890123456789012345678901234567890',
+      store,
+      client: mockClient,
+      agentPrivateKey: testPrivateKey,
+    });
+
+    const result = await agent.runTaskCreationCycle({
+      reward: '10000',
+      description: 'Test task creation',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.stage).toBe('intent_settlement');
+    expect(result.taskId).toBe('task-created-999');
+    expect(result.txHash).toBe('0xconfirmedescrowtxhash999');
+    expect(result.intentId).toBe('intent-uuid-1234');
+    expect(result.confirmedSpend).toBeDefined();
+    expect(result.confirmedSpend?.amount).toBe('10000');
+    expect(result.confirmedSpend?.amountUsd).toBe(0.01);
+    expect(result.confirmedSpend?.txHash).toBe('0xconfirmedescrowtxhash999');
+    expect(result.confirmedSpend?.taskId).toBe('task-created-999');
+
+    const updatedProfile = store.getAgent('agent-creation-test');
+    expect(updatedProfile?.metrics.totalActions).toBeGreaterThanOrEqual(1);
+    expect(updatedProfile?.metrics.successfulActions).toBeGreaterThanOrEqual(1);
   });
 });
+
+
 

@@ -85,7 +85,14 @@ export class SweepGate {
       targetTreasuryAddress ||
       spend.recipientAddress ||
       this.config.treasuryAddress ||
-      '0x742d35Cc6634C0532925a3b844Bc454e4438f44e';
+      process.env.THROTTLE_TREASURY_ADDRESS ||
+      process.env.TREASURY_ADDRESS;
+
+    if (!treasury) {
+      throw new Error(
+        '[SweepGate] Missing required treasury address. Set THROTTLE_TREASURY_ADDRESS in environment or configure treasuryAddress on SweepGate. Refusing to default to generic placeholder.'
+      );
+    }
 
     if (!profile) {
       return {
@@ -228,13 +235,14 @@ export class SweepGate {
         simulated: isSimulate,
       };
     } catch (err: any) {
-      const record = createActionRecord(proposedAction, decision, 'failed', undefined, err.message);
+      const errMsg = err?.cause ? `${err.message} (cause: ${err.cause?.message || err.cause})` : (err?.message || String(err));
+      const record = createActionRecord(proposedAction, decision, 'failed', undefined, errMsg);
       store.saveActionRecord(record);
 
       return {
         decision: gateDecision,
         status: 'error',
-        errorMessage: err.message,
+        errorMessage: errMsg,
       };
     }
   }

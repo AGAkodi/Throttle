@@ -361,7 +361,7 @@ async function main() {
 
   const testPayload = {
     input: {
-      recipientAddress: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+      recipientAddress: process.env.THROTTLE_TREASURY_ADDRESS || process.env.TREASURY_ADDRESS || '0xa8dA1FE17cf59ECd4098A4b3Df7894A4456517c4',
       amount: '1.00',
       simulate: true,
     },

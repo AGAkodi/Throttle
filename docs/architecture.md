@@ -2,20 +2,22 @@
 
 ## Overview
 
+> **Architecture Status:** Architecture is locked as of September 15, 2026 — no further pivots.
+
 **Throttle** is an external Dynamic Autonomy Controller built for the **KeeperHub x DoraHacks Main Track ("Best Integration into a Live Project")**. It integrates **Daydreams** (`lucid-agents` + TaskMarket) with **KeeperHub** (`PreToolUse` hook + dynamic controller evaluation + Turnkey wallet hardware limits).
 
 ---
 
 ## Two-Leg Flow & Execution Architecture
 
-Throttle decouples the agent's task-claiming activities from downstream fund movements across **two distinct legs**:
+Throttle decouples the agent's task-creation activities from downstream fund movements across **two distinct legs**:
 
 ```
  ═══════════════════════════════════════════════════════════════════════════════════
- LEG 1: TASKMARKET SETTLEMENT (AGENT OPERATING WALLET)
+ LEG 1: TASK CREATION SETTLEMENT (AGENT OPERATING WALLET)
  ═══════════════════════════════════════════════════════════════════════════════════
  
-        Autonomous Daydreams Agent (TaskMarket Worker)
+        Autonomous Daydreams Agent (TaskMarket Requester / Creator)
                              │
                              ▼
               Encounter HTTP 402 Challenge
@@ -25,11 +27,12 @@ Throttle decouples the agent's task-claiming activities from downstream fund mov
        Sign with Agent's OWN Wallet Key (Outside KeeperHub)
                              │
                              ▼
-             Confirmed Settlement on TaskMarket
+        Confirmed Task Creation Settlement on TaskMarket
                              │
                              ▼
  ═══════════════════════════════════════════════════════════════════════════════════
- TRIGGER: ConfirmedSpend Event Emitted { amount, txHash, taskId, timestamp }
+ TRIGGER: ConfirmedSpend Event Emitted (Task Creation Escrow Payment)
+ { amount, txHash, taskId, timestamp }
  ═══════════════════════════════════════════════════════════════════════════════════
                              │
                              ▼
@@ -77,8 +80,8 @@ Throttle decouples the agent's task-claiming activities from downstream fund mov
 Originally, Throttle sought to use KeeperHub's `/api/agentic-wallet/sign` endpoint to sign outbound TaskMarket x402 payment challenges. However, live API verification revealed that `/api/agentic-wallet/sign` requires a `workflowSlug` bound to a listed KeeperHub workflow, and server-derives `payTo` and `amount` from that workflow's own registered wallet and price. It cannot sign arbitrary third-party payments like TaskMarket bounties.
 
 KeeperHub's `transfer-token` workflow step *can* move ERC-20 tokens (USDC on Base) from the organization's Turnkey wallet to any caller-specified recipient. We therefore moved KeeperHub's integration point one step downstream:
-- **Leg 1:** Agent self-signs outbound TaskMarket payment challenges directly.
-- **Leg 2:** Once task settlement is confirmed on-chain (emitting a `ConfirmedSpend` event), Throttle's controller gates a KeeperHub-executed sweep into the organization's reserve or treasury address. This is the real, Turnkey-signed, tx-hash-bearing value movement KeeperHub executes.
+- **Leg 1:** Agent self-signs outbound TaskMarket task creation / escrow funding x402 payment challenges directly.
+- **Leg 2:** Once task creation settlement is confirmed on-chain (emitting a `ConfirmedSpend` event), Throttle's controller gates a KeeperHub-executed sweep into the organization's reserve or treasury address. This is the real, Turnkey-signed, tx-hash-bearing value movement KeeperHub executes.
 
 ---
 
@@ -115,3 +118,18 @@ Every decision in Throttle is completely deterministic and reproducible from ser
 ```
 
 This ensures operators and judges have complete transparency into why autonomy was adjusted.
+
+---
+
+## Live On-Chain Execution Proofs (Base Mainnet)
+
+The full two-leg execution path was proven live on Base mainnet on September 15, 2026:
+
+| Parameter | Leg 1: Task Creation Escrow Settlement | Leg 2: KeeperHub Treasury Sweep |
+| :--- | :--- | :--- |
+| **Transaction Hash** | [`0x754016f942cf942ee10f3a299233c723791194b66c7a873794fe7427fbbfc691`](https://basescan.org/tx/0x754016f942cf942ee10f3a299233c723791194b66c7a873794fe7427fbbfc691) | [`0xcbff1cb511b73952aa6c476fbcca8a5d0939c7792369da0ad6f9d9162b0f1529`](https://basescan.org/tx/0xcbff1cb511b73952aa6c476fbcca8a5d0939c7792369da0ad6f9d9162b0f1529) |
+| **Network** | Base Mainnet (Chain ID 8453) | Base Mainnet (Chain ID 8453) |
+| **Action** | EIP-3009 TransferWithAuthorization for TaskMarket Task Creation | Turnkey Hardware-Signed ERC-20 Transfer to Configured Treasury |
+| **Identifiers** | Task ID: `0xaedacb50...`, Intent ID: `69a9f0ff...` | Execution ID: `hw9tw0lmtrkqwbg8zit21`, Block: `51358715` |
+| **Amount** | 0.01 USDC | 0.01 USDC |
+| **Verification** | Verified on BaseScan (TransferWithAuthorization) | Verified on BaseScan (Turnkey wallet to configured treasury) |

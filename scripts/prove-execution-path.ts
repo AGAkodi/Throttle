@@ -1,43 +1,46 @@
-/**
- * Throttle Execution Path Spike Harness
- *
- * Proves the end-to-end two-leg value movement pipeline:
- *
- * LEG 1 (TaskMarket Settlement — Agent-Signed):
- * 1. Queries api.taskmarket.dev for open tasks
- * 2. Claims a task to trigger the HTTP 402 Payment Required challenge
- * 3. Signs the EIP-3009 TransferWithAuthorization directly with the agent's own wallet key
- * 4. Submits settlement claim to TaskMarket with PAYMENT-SIGNATURE
- * 5. Verifies confirmed settlement txHash and emits ConfirmedSpend event
- *
- * LEG 2 (Treasury Sweep — Throttle-Gated & KeeperHub-Executed):
- * 6. Evaluates ConfirmedSpend through Throttle Controller (Risk, Drift, Trust, Authority)
- * 7. SweepGate authorizes sweep into Treasury / Reserve address
- * 8. Dispatches KeeperHub execute_workflow with simulate: true preflight
- * 9. Executes KeeperHub workflow (Turnkey-signed transfer-token step)
- * 10. Polls get_execution to confirm terminal receipt and final sweep transaction hash
- *
- * Usage:
- *   npx tsx scripts/prove-execution-path.ts               # Live mode (fails loudly on errors)
- *   npx tsx scripts/prove-execution-path.ts --simulate    # Explicit simulation/mock mode
- */
+import dns from 'node:dns';
+import { Agent, setGlobalDispatcher } from 'undici';
+
+try {
+  dns.setDefaultResultOrder('ipv4first');
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch {}
+
+try {
+  setGlobalDispatcher(
+    new Agent({
+      connect: {
+        timeout: 60_000,
+        lookup: (hostname, opts, cb) => {
+          dns.resolve4(hostname, (err, addrs) => {
+            if (!err && addrs && addrs.length > 0) {
+              if (opts && (opts as any).all) {
+                return (cb as any)(null, addrs.map((a) => ({ address: a, family: 4 })));
+              }
+              return (cb as any)(null, addrs[0], 4);
+            }
+            return dns.lookup(hostname, opts, cb);
+          });
+        },
+      },
+      headersTimeout: 60_000,
+      bodyTimeout: 60_000,
+    })
+  );
+} catch {}
 
 import crypto from 'crypto';
 import 'dotenv/config';
+import { privateKeyToAccount } from 'viem/accounts';
+import type { Hex } from 'viem';
 import { ThrottleStore, createDefaultProfile, AuthorityLevel } from '@throttle/controller';
 import { SweepGate, ConfirmedSpendEvent } from '@throttle/keeperhub-adapter';
-import { signTransferWithAuthorization, X402ChallengeData } from '@throttle/daydreams-adapter';
-
-interface TaskMarketTask {
-  id: string;
-  title?: string;
-  type?: string;
-  status: string;
-  mode?: string;
-  reward?: string;
-  rewardUsd?: number;
-  bountyUsd?: number;
-}
+import {
+  TaskMarketClient,
+  TaskMarketAgent,
+  CreateTaskParams,
+  CreatedTaskResult,
+} from '@throttle/daydreams-adapter';
 
 const IS_SIMULATE = process.argv.includes('--simulate');
 const TASKMARKET_BASE_URL = (process.env.TASKMARKET_API_URL || 'https://api.taskmarket.dev').replace(/\/$/, '');
@@ -45,255 +48,19 @@ const KEEPERHUB_BASE_URL = (process.env.KEEPERHUB_BASE_URL || 'https://app.keepe
 const KEEPERHUB_API_KEY = process.env.KEEPERHUB_API_KEY || '';
 const KEEPERHUB_SWEEP_WORKFLOW_ID = process.env.KEEPERHUB_SWEEP_WORKFLOW_ID || 'wf-treasury-sweep-01';
 const AGENT_WALLET_PRIVATE_KEY = process.env.AGENT_WALLET_PRIVATE_KEY || '';
-const WORKER_ADDRESS = process.env.KEEPERHUB_WALLET_ADDRESS || '0x1A3B27f02835ef31AEB1f59C4f003233147Bfdc5';
-const TREASURY_ADDRESS = process.env.TREASURY_ADDRESS || '0x742d35Cc6634C0532925a3b844Bc454e4438f44e';
-
-async function listOpenTasks(): Promise<TaskMarketTask[]> {
-  console.log(`[TaskMarket] Fetching open tasks from ${TASKMARKET_BASE_URL}/api/tasks...`);
-
-  if (IS_SIMULATE) {
-    console.log('[TaskMarket] [SIMULATION] Using simulated open task.');
-    return [
-      {
-        id: 'simulated-task-001',
-        title: 'Simulated Data Verification Task',
-        status: 'open',
-        mode: 'claim',
-      },
-    ];
-  }
-
-  let res: Response;
-  try {
-    res = await fetch(`${TASKMARKET_BASE_URL}/api/tasks`, {
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-  } catch (error: any) {
-    console.error(`\n[FATAL] Cannot connect to TaskMarket API at ${TASKMARKET_BASE_URL}: ${error.message}`);
-    process.exit(1);
-  }
-
-  if (!res.ok) {
-    console.error(`\n[FATAL] TaskMarket /api/tasks returned HTTP ${res.status}: ${res.statusText}`);
-    process.exit(1);
-  }
-
-  let data: any;
-  try {
-    data = await res.json();
-  } catch (err: any) {
-    console.error(`\n[FATAL] TaskMarket /api/tasks returned unparseable response: ${err.message}`);
-    process.exit(1);
-  }
-
-  const tasks: TaskMarketTask[] = Array.isArray(data) ? data : (data?.tasks || []);
-  if (!Array.isArray(tasks)) {
-    console.error(`\n[FATAL] TaskMarket /api/tasks returned unexpected response shape (missing tasks array):`, data);
-    process.exit(1);
-  }
-
-  const openTasks = tasks.filter((t) => t.status === 'open' && t.mode === 'claim');
-  console.log(`[TaskMarket] Found ${tasks.length} total tasks (${openTasks.length} open claim-mode).`);
-
-  if (openTasks.length === 0) {
-    console.error(`\n[FATAL] No open claim-mode tasks available on TaskMarket (out of ${tasks.length} tasks).`);
-    console.error(`All ${tasks.filter((t) => t.status === 'open').length} currently open tasks are mode: 'bounty', which require inline signatures rather than the HTTP 402 challenge-then-sign handshake.`);
-    process.exit(1);
-  }
-
-  return openTasks;
+const TREASURY_ADDRESS = process.env.THROTTLE_TREASURY_ADDRESS || process.env.TREASURY_ADDRESS || '';
+if (!TREASURY_ADDRESS) {
+  console.error('[FATAL] THROTTLE_TREASURY_ADDRESS is missing from environment. Refusing to default to generic placeholder.');
+  process.exit(1);
 }
 
-async function triggerClaimChallenge(taskId: string): Promise<{ status: number; challenge: X402ChallengeData; rawBody: any }> {
-  console.log(`[TaskMarket] Attempting claim on task ${taskId} to trigger 402 challenge...`);
-
-  if (IS_SIMULATE) {
-    console.log('[TaskMarket] [SIMULATION] Emulating standard EIP-3009 402 challenge...');
-    const mockChallenge: X402ChallengeData = {
-      chain: 'base',
-      contract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-      payTo: '0x1234567890123456789012345678901234567890',
-      amount: '1000000', // 1.00 USDC
-      validAfter: Math.floor(Date.now() / 1000) - 60,
-      validBefore: Math.floor(Date.now() / 1000) + 300,
-      nonce: '0x' + crypto.randomBytes(32).toString('hex'),
-      domain: {
-        name: 'USD Coin',
-        version: '2',
-        chainId: 8453,
-        verifyingContract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-      },
-    };
-    return {
-      status: 402,
-      challenge: mockChallenge,
-      rawBody: { error: 'Payment Required', challenge: mockChallenge },
-    };
-  }
-
-  let res: Response;
-  try {
-    res = await fetch(`${TASKMARKET_BASE_URL}/api/tasks/${taskId}/claim`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        workerAddress: WORKER_ADDRESS,
-      }),
-    });
-  } catch (error: any) {
-    console.error(`\n[FATAL] Network error during claim attempt on task ${taskId}: ${error.message}`);
-    process.exit(1);
-  }
-
-  const bodyText = await res.text();
-  let parsedBody: any;
-  try {
-    parsedBody = JSON.parse(bodyText);
-  } catch {
-    parsedBody = bodyText;
-  }
-
-  console.log(`[TaskMarket Response] HTTP Status: ${res.status}`);
-
-  if (res.status !== 402) {
-    console.error(`\n[FATAL] Expected HTTP 402 Payment Required challenge, but received HTTP ${res.status}.`);
-    console.error(`Response details:`, JSON.stringify(parsedBody, null, 2));
-    process.exit(1);
-  }
-
-  const rawChallenge = parsedBody?.challenge || parsedBody;
-  if (!rawChallenge || !rawChallenge.payTo || !rawChallenge.amount) {
-    console.error(`\n[FATAL] HTTP 402 response did not contain a valid payment challenge payload:`, parsedBody);
-    process.exit(1);
-  }
-
-  const challenge: X402ChallengeData = {
-    chain: rawChallenge.chain || 'base',
-    contract: rawChallenge.contract || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-    payTo: rawChallenge.payTo,
-    amount: rawChallenge.amount,
-    validAfter: rawChallenge.validAfter || Math.floor(Date.now() / 1000) - 60,
-    validBefore: rawChallenge.validBefore || Math.floor(Date.now() / 1000) + 300,
-    nonce: rawChallenge.nonce || ('0x' + crypto.randomBytes(32).toString('hex')),
-    domain: rawChallenge.domain,
-  };
-
-  return {
-    status: res.status,
-    challenge,
-    rawBody: parsedBody,
-  };
+function getAgentAddress(privateKey: string): string {
+  if (!privateKey) return '0x1A3B27f02835ef31AEB1f59C4f003233147Bfdc5';
+  const formattedKey = (privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`) as Hex;
+  return privateKeyToAccount(formattedKey).address;
 }
 
-async function signWithAgentWallet(challenge: X402ChallengeData): Promise<string> {
-  console.log('[Agent Signer] Signing outbound TaskMarket payment with agent wallet key...');
-
-  if (IS_SIMULATE) {
-    const testKey = AGENT_WALLET_PRIVATE_KEY || '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f361b97';
-    console.log('[Agent Signer] [SIMULATION] Using test wallet key for EIP-3009 signing.');
-    return signTransferWithAuthorization(testKey, challenge);
-  }
-
-  if (!AGENT_WALLET_PRIVATE_KEY) {
-    console.error('\n[FATAL] Missing AGENT_WALLET_PRIVATE_KEY environment variable.');
-    console.error('Leg 1 signing requires the agent wallet private key. Use --simulate for mock mode.');
-    process.exit(1);
-  }
-
-  return signTransferWithAuthorization(AGENT_WALLET_PRIVATE_KEY, challenge);
-}
-
-async function settleTaskMarketClaim(
-  taskId: string,
-  signature: string
-): Promise<{ success: boolean; status: number; txHash: string; data: any }> {
-  console.log(`\n[TaskMarket] Submitting settlement claim for task ${taskId} with PAYMENT-SIGNATURE...`);
-
-  if (IS_SIMULATE) {
-    console.log('[TaskMarket] [SIMULATION] Emulating settlement response...');
-    const mockHash = '0x' + crypto.randomBytes(32).toString('hex');
-    return {
-      success: true,
-      status: 200,
-      txHash: mockHash,
-      data: {
-        status: 'claimed',
-        message: 'Claim settled (simulation)',
-        txHash: mockHash,
-      },
-    };
-  }
-
-  let res: Response;
-  try {
-    res = await fetch(`${TASKMARKET_BASE_URL}/api/tasks/${taskId}/claim`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        'PAYMENT-SIGNATURE': signature,
-        'X-Payment-Signature': signature,
-      },
-      body: JSON.stringify({
-        workerAddress: WORKER_ADDRESS,
-        signature,
-      }),
-    });
-  } catch (error: any) {
-    console.error(`\n[FATAL] Network error during settlement claim on task ${taskId}: ${error.message}`);
-    process.exit(1);
-  }
-
-  const bodyText = await res.text();
-  let parsed: any;
-  try {
-    parsed = JSON.parse(bodyText);
-  } catch {
-    parsed = bodyText;
-  }
-
-  console.log(`[TaskMarket Settlement] HTTP ${res.status}:`, JSON.stringify(parsed, null, 2));
-
-  if (!res.ok) {
-    console.error(`\n[FATAL] TaskMarket claim settlement failed with HTTP ${res.status}:`, parsed);
-    process.exit(1);
-  }
-
-  const txHash =
-    parsed?.txHash ||
-    parsed?.transactionHash ||
-    parsed?.hash ||
-    parsed?.data?.txHash ||
-    parsed?.data?.hash ||
-    parsed?.reference ||
-    parsed?.claimId;
-
-  if (!txHash) {
-    if (IS_SIMULATE) {
-      return {
-        success: true,
-        status: res.status,
-        txHash: `0xsim_settled_${Date.now()}`,
-        data: parsed,
-      };
-    }
-    console.error(`\n[FATAL] TaskMarket claim settlement succeeded with HTTP ${res.status} but returned no txHash, hash, or reference. Refusing to fabricate one.`);
-    console.error('Response payload:', parsed);
-    process.exit(1);
-  }
-
-  return {
-    success: true,
-    status: res.status,
-    txHash,
-    data: parsed,
-  };
-}
+const WORKER_ADDRESS = process.env.AGENT_WORKER_ADDRESS || getAgentAddress(AGENT_WALLET_PRIVATE_KEY);
 
 async function main() {
   console.log('================================================================');
@@ -309,7 +76,7 @@ async function main() {
 
     if (!AGENT_WALLET_PRIVATE_KEY) {
       console.error('[FATAL] Missing required environment variable: AGENT_WALLET_PRIVATE_KEY');
-      console.error('Leg 1 signing requires AGENT_WALLET_PRIVATE_KEY. Use --simulate for mock mode.');
+      console.error('Leg 1 task creation requires AGENT_WALLET_PRIVATE_KEY. Use --simulate for mock mode.');
       process.exit(1);
     }
 
@@ -320,46 +87,74 @@ async function main() {
     }
   }
 
+  console.log(`[Signer] Agent Address: ${WORKER_ADDRESS}`);
+
   // --------------------------------------------------------------------------
-  // LEG 1: TaskMarket Discovery, Challenge, Agent-Signing, and Settlement
+  // LEG 1: TaskMarket Task Creation, X402 Payment Challenge, and Settlement
   // --------------------------------------------------------------------------
   console.log('\n----------------------------------------------------------------');
-  console.log('LEG 1: TASKMARKET SETTLEMENT (AGENT-SIGNED)');
+  console.log('LEG 1: TASKMARKET TASK CREATION SETTLEMENT (AGENT-SIGNED X402)');
   console.log('----------------------------------------------------------------');
 
-  const openTasks = await listOpenTasks();
-  const targetTask = openTasks[0];
-  console.log(`[Execution] Selected task: ${targetTask.id} ("${targetTask.title || targetTask.id}")\n`);
+  const store = new ThrottleStore(':memory:');
+  const agentProfile = createDefaultProfile('agent-spike-runner', 'ThrottleDemoAgent');
+  store.saveAgent(agentProfile);
 
-  const challengeResult = await triggerClaimChallenge(targetTask.id);
-  const signature = await signWithAgentWallet(challengeResult.challenge);
-  console.log(`[Agent Signature] ${signature.slice(0, 34)}...`);
+  let client: TaskMarketClient;
+  if (IS_SIMULATE) {
+    class SimulatedTaskMarketClient extends TaskMarketClient {
+      public override async createAndSettleTask(_params: CreateTaskParams): Promise<CreatedTaskResult> {
+        const mockHash = '0x' + crypto.randomBytes(32).toString('hex');
+        const mockTaskId = '0x' + crypto.randomBytes(32).toString('hex');
+        const mockIntentId = 'intent-sim-' + crypto.randomUUID();
+        return {
+          taskId: mockTaskId,
+          txHash: mockHash,
+          intentId: mockIntentId,
+          status: 'created',
+          rawResponse: { success: true, taskId: mockTaskId, intentId: mockIntentId },
+        };
+      }
+    }
+    client = new SimulatedTaskMarketClient(TASKMARKET_BASE_URL);
+  } else {
+    client = new TaskMarketClient(TASKMARKET_BASE_URL);
+  }
 
-  const settlement = await settleTaskMarketClaim(targetTask.id, signature);
-  console.log(`[Leg 1 Complete] TaskMarket settlement confirmed! TxHash: ${settlement.txHash}`);
+  const agent = new TaskMarketAgent({
+    agentId: 'agent-spike-runner',
+    workerAddress: WORKER_ADDRESS,
+    store,
+    client,
+    agentPrivateKey: AGENT_WALLET_PRIVATE_KEY,
+  });
 
-  // --------------------------------------------------------------------------
-  // TRIGGER: ConfirmedSpend Event Emission (TaskMarket Claim Settlement)
-  // --------------------------------------------------------------------------
-  const rawUnits = BigInt(challengeResult.challenge.amount || '1000000');
-  const amountUsd = Number(rawUnits) / 1_000_000;
+  console.log('[Execution] Executing runTaskCreationCycle on TaskMarket...');
+  console.log('  - Task Reward: 0.01 USDC (10,000 raw units)');
+  console.log('  - Task Mode:   claim');
 
-  const spendEvent: ConfirmedSpendEvent = {
-    amount: challengeResult.challenge.amount || '1000000',
-    amountUsd,
-    txHash: settlement.txHash,
-    taskId: targetTask.id,
-    timestamp: Date.now(),
-    tokenSymbol: 'USDC',
-    recipientAddress: TREASURY_ADDRESS,
-  };
+  const creationResult = await agent.runTaskCreationCycle({
+    reward: '10000',
+    description: 'Autonomous claim task for Throttle dynamic autonomy pipeline verification',
+    mode: 'claim',
+    tags: ['throttle-verification', 'claim-mode'],
+  });
+
+  if (!creationResult.success || !creationResult.confirmedSpend) {
+    console.error(`\n[FATAL] Leg 1 TaskMarket task creation settlement failed: ${creationResult.error}`);
+    process.exit(1);
+  }
+
+  const spendEvent: ConfirmedSpendEvent = creationResult.confirmedSpend;
+  spendEvent.recipientAddress = TREASURY_ADDRESS;
 
   console.log('\n----------------------------------------------------------------');
-  console.log('TRIGGER: ConfirmedSpend Event Emitted (TaskMarket Claim Settlement)');
+  console.log('TRIGGER: ConfirmedSpend Event Emitted (Task Creation Escrow Payment)');
   console.log('----------------------------------------------------------------');
   console.log(`  - Amount:     $${spendEvent.amountUsd.toFixed(2)} (${spendEvent.amount} raw units)`);
   console.log(`  - Settlement: ${spendEvent.txHash}`);
   console.log(`  - Task ID:    ${spendEvent.taskId}`);
+  console.log(`  - Intent ID:  ${creationResult.intentId}`);
   console.log(`  - Treasury:   ${TREASURY_ADDRESS}`);
 
   // --------------------------------------------------------------------------
@@ -368,10 +163,6 @@ async function main() {
   console.log('\n----------------------------------------------------------------');
   console.log('LEG 2: THROTTLE CONTROLLER & KEEPERHUB TREASURY SWEEP');
   console.log('----------------------------------------------------------------');
-
-  const store = new ThrottleStore(':memory:');
-  const agentProfile = createDefaultProfile('agent-spike-runner', 'ThrottleDemoAgent');
-  store.saveAgent(agentProfile);
 
   const sweepGate = new SweepGate({
     store,
@@ -410,12 +201,12 @@ async function main() {
   if (IS_SIMULATE) {
     console.log('[SIMULATION COMPLETE] Full two-leg execution loop completed successfully.');
     console.log('Notice: Simulation mode demonstrates wiring and schemas; not an on-chain proof.');
-    console.log(`Leg 1 Settlement TxHash: ${settlement.txHash}`);
-    console.log(`Leg 2 Sweep TxHash:      ${sweepResult.txHash}`);
+    console.log(`Leg 1 Task Creation Settlement: ${spendEvent.txHash}`);
+    console.log(`Leg 2 KeeperHub Treasury Sweep:  ${sweepResult.txHash}`);
   } else {
     console.log('[SUCCESS] Full two-leg execution path verified against live endpoints!');
-    console.log(`Leg 1 TaskMarket Settlement: ${settlement.txHash}`);
-    console.log(`Leg 2 KeeperHub Sweep:       ${sweepResult.txHash}`);
+    console.log(`Leg 1 Task Creation Settlement: ${spendEvent.txHash}`);
+    console.log(`Leg 2 KeeperHub Treasury Sweep:  ${sweepResult.txHash}`);
     console.log('Turnkey-signed value movement authorized by Throttle Dynamic Autonomy Controller.');
   }
   console.log('================================================================\n');
@@ -425,3 +216,5 @@ main().catch((err) => {
   console.error('\n[FATAL] Unhandled error in prove-execution-path:', err.message || err);
   process.exit(1);
 });
+
+

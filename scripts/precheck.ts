@@ -1,9 +1,15 @@
+import dns from 'node:dns';
+try {
+  dns.setDefaultResultOrder('ipv4first');
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch {}
+
 import dotenv from 'dotenv';
+dotenv.config();
+
 import { privateKeyToAccount } from 'viem/accounts';
 import { createPublicClient, http, formatUnits, formatEther, parseAbi, type Hex } from 'viem';
 import { base } from 'viem/chains';
-
-dotenv.config();
 
 const AGENT_WALLET_PRIVATE_KEY = process.env.AGENT_WALLET_PRIVATE_KEY || '';
 const KEEPERHUB_ORG_WALLET_ADDRESS =

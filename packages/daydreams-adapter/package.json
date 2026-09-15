@@ -21,6 +21,7 @@
   "dependencies": {
     "@throttle/controller": "workspace:*",
     "@throttle/keeperhub-adapter": "workspace:*",
+    "undici": "^8.10.2",
     "viem": "^2.56.3",
     "zod": "^3.24.1"
   },
