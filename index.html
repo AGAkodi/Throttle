@@ -579,7 +579,7 @@
       <div class="ladder-panel" id="ladderPanel">
         <div class="ladder-head">
           <div>
-            <h3>Live authority state <span class="count" id="agentNameLabel">— daydreams-agent-alpha</span></h3>
+            <h3>Live authority state <span class="count" id="agentNameLabel">— agent-spike-runner</span></h3>
           </div>
           <span class="live-dot" id="liveHeartbeat"><i></i><span id="heartbeatText">evaluating via controller</span></span>
         </div>
@@ -1092,8 +1092,8 @@
 
   // Local state cache
   let localState = {
-    agentId: 'daydreams-agent-alpha',
-    name: 'Daydreams Agent Alpha',
+    agentId: 'agent-spike-runner',
+    name: 'Daydreams Agent Alpha (Spike Runner)',
     currentAuthorityLevel: 0,
     trustScore: { current: 85 },
     baseline: {
@@ -1194,8 +1194,7 @@
       const actions = await res.json();
       renderActions(actions);
     } catch {
-      // Render simulated sample actions
-      renderActions(getSimulatedActions());
+      renderActions([]);
     }
   }
 
@@ -1596,32 +1595,10 @@
     const tbody = document.getElementById('actionFeedBody');
     tbody.innerHTML = '';
     if (!actions || actions.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--muted); padding:20px;">No actions recorded yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--muted); padding:20px;">No actions evaluated yet — run the agent or simulation to see live decisions.</td></tr>';
       return;
     }
     actions.forEach(a => prependActionRow(a));
-  }
-
-  function getSimulatedActions() {
-    const now = Date.now();
-    return [
-      {
-        id: 'seed_act_10',
-        timestamp: now - 30000,
-        action: { amountUsd: 1.5, tokenSymbol: 'USDC', destination: '0x1234567890123456789012345678901234567890' },
-        decision: { authorityLevel: 0, reason: 'Full autonomy: Baseline match optimal' },
-        authorityLevel: 0,
-        executionStatus: 'executed'
-      },
-      {
-        id: 'seed_act_9',
-        timestamp: now - 90000,
-        action: { amountUsd: 2.0, tokenSymbol: 'USDC', destination: '0x2345678901234567890123456789012345678901' },
-        decision: { authorityLevel: 0, reason: 'Full autonomy: Verified destination streak' },
-        authorityLevel: 0,
-        executionStatus: 'executed'
-      }
-    ];
   }
 </script>
 

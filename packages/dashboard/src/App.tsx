@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { fetchAgents, fetchActions, subscribeToTelemetry, AgentProfile, ActionRecord, getApiBase } from './lib/api-client.js';
+import { Nav } from './components/landing/Nav.js';
+import { Hero } from './components/landing/Hero.js';
+import { Overview } from './components/landing/Overview.js';
+import { Problem } from './components/landing/Problem.js';
+import { Solution } from './components/landing/Solution.js';
+import { Architecture } from './components/landing/Architecture.js';
+import { HowItWorks } from './components/landing/HowItWorks.js';
+import { Footer } from './components/landing/Footer.js';
 import { AgentStatus } from './pages/AgentStatus.js';
 import { ActivityFeed } from './pages/ActivityFeed.js';
 import { DecisionDetail } from './pages/DecisionDetail.js';
@@ -82,123 +90,95 @@ export const App: React.FC = () => {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Top Header */}
-      <header
-        style={{
-          borderBottom: '1px solid var(--border-subtle)',
-          backgroundColor: 'rgba(10, 13, 20, 0.8)',
-          backdropFilter: 'blur(12px)',
-          padding: '16px 32px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          position: 'sticky',
-          top: 0,
-          zIndex: 50,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '8px',
-              background: 'linear-gradient(135deg, #6366f1 0%, #10b981 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-              fontSize: '16px',
-            }}
-          >
-            T
-          </div>
-          <div>
-            <h1 style={{ fontSize: '18px', fontWeight: 700, letterSpacing: '-0.02em' }}>THROTTLE</h1>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              Dynamic Autonomy Controller • KeeperHub x DoraHacks
-            </span>
-          </div>
-        </div>
+      {/* 1. Navigation Header */}
+      <Nav isConnected={isConnected} apiBase={apiBase} />
 
-        {/* Integration & Telemetry Status Badges */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span
-              style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor: isConnected ? 'var(--lvl-0)' : 'var(--lvl-4)',
-                boxShadow: isConnected ? '0 0 8px var(--lvl-0)' : '0 0 8px var(--lvl-4)',
-                transition: 'all 0.3s ease',
-              }}
-            />
-            <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)' }}>
-              {isConnected ? `Live Telemetry Active (${apiBase})` : 'Connecting to Controller...'}
-            </span>
-          </div>
+      <main style={{ flex: 1 }}>
+        {/* 2. Hero Section */}
+        <Hero
+          activeAgent={activeAgent}
+          isConnected={isConnected}
+          onScenarioTriggered={loadData}
+        />
 
-          <span
-            style={{
-              padding: '4px 10px',
-              borderRadius: '6px',
-              fontSize: '11px',
-              fontWeight: 600,
-              backgroundColor: 'rgba(99, 102, 241, 0.15)',
-              color: 'var(--lvl-2)',
-              border: '1px solid rgba(99, 102, 241, 0.3)',
-            }}
-          >
-            Daydreams + KeeperHub
-          </span>
-        </div>
-      </header>
+        {/* 3. Overview Section */}
+        <Overview />
 
-      {/* Main Content Layout */}
-      <main style={{ flex: 1, padding: '24px 32px', maxWidth: '1440px', margin: '0 auto', width: '100%' }}>
-        {connectionError && !activeAgent && (
-          <div
-            style={{
-              marginBottom: '20px',
-              padding: '12px 16px',
-              borderRadius: '8px',
-              backgroundColor: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid var(--lvl-5)',
-              color: 'var(--lvl-5)',
-              fontSize: '13px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <span>Controller unreachable on {apiBase}. Start with <code>pnpm dev:controller</code> to stream live state.</span>
-          </div>
-        )}
+        {/* 4. Problem Section */}
+        <Problem />
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px' }}>
-          {/* Left Column: Agent Status & Gauges */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <AgentStatus agent={activeAgent} latestAction={latestAction} isConnected={isConnected} />
-          </div>
+        {/* 5. Solution Section */}
+        <Solution />
 
-          {/* Right Column: Live Feed & Explainability View */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <ActivityFeed
-              actions={actions}
-              onSelectAction={(record) => setSelectedRecord(record)}
-              selectedActionId={selectedRecord?.id}
-            />
+        {/* 6. Architecture Section */}
+        <Architecture />
 
-            {selectedRecord && (
-              <DecisionDetail
-                record={selectedRecord}
-                onClose={() => setSelectedRecord(null)}
-              />
+        {/* 7. How It Works Section */}
+        <HowItWorks />
+
+        {/* 8. Live Section: Real-time Autonomy Console */}
+        <section id="live" className="live-section">
+          <span id="evaluator" style={{ position: 'relative', top: '-80px', display: 'block' }}></span>
+          <span id="activity-feed" style={{ position: 'relative', top: '-80px', display: 'block' }}></span>
+          <div className="wrap">
+            <div className="section-head">
+              <div className="eyebrow">Live Controller</div>
+              <h2>Real-time Autonomy & Telemetry Console</h2>
+              <p>
+                Inspect active agent state, watch dynamic authority level adjustments in real time,
+                and explore full factor breakdowns for every payment proposal.
+              </p>
+            </div>
+
+            {connectionError && !activeAgent && (
+              <div
+                style={{
+                  marginBottom: '20px',
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid var(--lvl-5)',
+                  color: 'var(--lvl-5)',
+                  fontSize: '13px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <span>
+                  Controller unreachable on {apiBase}. Start with <code>pnpm dev:controller</code> to stream live state.
+                </span>
+              </div>
             )}
+
+            <div className="live-grid">
+              {/* Left Column: Agent Status & Gauges */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <AgentStatus agent={activeAgent} latestAction={latestAction} isConnected={isConnected} />
+              </div>
+
+              {/* Right Column: Live Feed & Explainability View */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <ActivityFeed
+                  actions={actions}
+                  onSelectAction={(record) => setSelectedRecord(record)}
+                  selectedActionId={selectedRecord?.id}
+                />
+
+                {selectedRecord && (
+                  <DecisionDetail
+                    record={selectedRecord}
+                    onClose={() => setSelectedRecord(null)}
+                  />
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
       </main>
+
+      {/* 9. Footer */}
+      <Footer />
     </div>
   );
 };

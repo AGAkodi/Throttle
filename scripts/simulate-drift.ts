@@ -25,7 +25,7 @@ const DB_PATH = process.env.CONTROLLER_DB_PATH || './data/throttle.sqlite';
 async function simulate() {
   console.log(`[Simulate Drift] Connecting to database at ${DB_PATH}...`);
   const store = new ThrottleStore(DB_PATH);
-  const agentId = 'daydreams-agent-alpha';
+  const agentId = 'agent-spike-runner';
 
   let profile = store.getAgent(agentId);
   if (!profile) {

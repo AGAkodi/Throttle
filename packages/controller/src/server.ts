@@ -147,12 +147,12 @@ export function createControllerServer(options: ServerOptions): ThrottleServer {
     if (req.method === 'POST' && url.pathname === '/api/evaluate') {
       readJsonBody()
         .then(body => {
-          const agentId = body.agentId || body.action?.agentId || 'daydreams-agent-alpha';
+          const agentId = body.agentId || body.action?.agentId || 'agent-spike-runner';
           let profile = store.getAgent(agentId);
 
           if (!profile) {
             // Auto-provision default agent profile if none exists
-            profile = createDefaultProfile(agentId, 'Daydreams Agent Alpha');
+            profile = createDefaultProfile(agentId, 'Daydreams Agent Alpha (Spike Runner)');
             store.saveAgent(profile);
           }
 
@@ -212,11 +212,11 @@ export function createControllerServer(options: ServerOptions): ThrottleServer {
       readJsonBody()
         .then(body => {
           const scenario = body.scenario || 'seed';
-          const agentId = body.agentId || 'daydreams-agent-alpha';
+          const agentId = body.agentId || 'agent-spike-runner';
 
           if (scenario === 'seed') {
             // Seed clean baseline
-            const profile = createDefaultProfile(agentId, 'Daydreams Agent Alpha (TaskMarket Worker)');
+            const profile = createDefaultProfile(agentId, 'Daydreams Agent Alpha (Spike Runner)');
             const knownAddresses = [
               '0x1234567890123456789012345678901234567890',
               '0x2345678901234567890123456789012345678901',

@@ -12,6 +12,9 @@
     "clean": "pnpm -r run clean",
     "test:execution-path": "tsx scripts/prove-execution-path.ts",
     "test:execution-path:simulate": "tsx scripts/prove-execution-path.ts --simulate",
+    "dev": "node scripts/serve-root.mjs",
+    "dev:frontend": "node scripts/serve-root.mjs",
+    "start": "node scripts/serve-root.mjs",
     "dev:controller": "tsx scripts/run-server.ts",
     "dev:dashboard": "pnpm --filter @throttle/dashboard dev"
   },

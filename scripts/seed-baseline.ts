@@ -24,8 +24,8 @@ async function seed() {
   console.log(`[Seed Baseline] Opening database at ${DB_PATH}...`);
   const store = new ThrottleStore(DB_PATH);
 
-  const agentId = 'daydreams-agent-alpha';
-  const profile = createDefaultProfile(agentId, 'Daydreams Alpha Agent', {
+  const agentId = 'agent-spike-runner';
+  const profile = createDefaultProfile(agentId, 'Daydreams Agent Alpha (Spike Runner)', {
     maxSingleTransferUsd: 50.0,
     maxHourlySpendUsd: 150.0,
     maxDailySpendUsd: 500.0,

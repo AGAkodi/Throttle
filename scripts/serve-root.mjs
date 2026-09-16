@@ -18,6 +18,12 @@ const mimeTypes = {
 };
 
 const server = http.createServer((req, res) => {
+  if (req.url === '/dashboard' || req.url === '/operator') {
+    res.writeHead(302, { Location: 'http://localhost:5173' });
+    res.end();
+    return;
+  }
+
   let reqPath = req.url === '/' ? '/index.html' : req.url.split('?')[0];
   const filePath = path.join(rootDir, reqPath);
 
