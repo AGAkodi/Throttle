@@ -11,7 +11,7 @@ This document records the exact test scenarios executed against the integrated T
 | **1** | Execution Failure & Backoff | Upstream failure / transaction reverted | Failure logged, metrics updated, retry recorded | **PASSED** (`scenarios.test.ts`) |
 | **2** | Retry Loop Drift Spike | Agent repeatedly retries 4+ times | Drift detected ($\ge 35$), risk penalty added, authority demoted | **PASSED** (`scenarios.test.ts`) |
 | **3** | Policy Violation (Forbidden Target) | Interaction with unwhitelisted chain/protocol | Hard constraint trip $\rightarrow$ instant **Level 5: FROZEN** | **PASSED** (`scenarios.test.ts`) |
-| **4** | Dynamic Scope Enforcement | Transfer exceeds restricted mode cap | Single spend cap exceeded $\rightarrow$ blocked before KeeperHub `/sign` | **PASSED** (`scenarios.test.ts`) |
+| **4** | Dynamic Scope Enforcement | Transfer exceeds restricted mode cap | Single spend cap exceeded $\rightarrow$ rejected before KeeperHub sweep execution | **PASSED** (`scenarios.test.ts`) |
 | **5** | Rehabilitation & Recovery | Continuous normal-range execution | Authority restored step-by-step ($4 \rightarrow 3 \rightarrow 2 \rightarrow 1 \rightarrow 0$) | **PASSED** (`scenarios.test.ts`) |
 
 ---
@@ -32,7 +32,7 @@ This document records the exact test scenarios executed against the integrated T
 
 ### Scenario 4: Spend Cap Enforcement in Restricted Authority Mode
 * **Setup:** Agent operating in `Level 3: Restricted` (where spend cap is scaled by the 0.25 multiplier, e.g. \$10.00 max) attempts a \$15.00 payment.
-* **Controller Response:** `SignGate` intercepts the challenge, determines that \$15.00 exceeds the effective restricted cap of \$10.00, and rejects the challenge *before* calling KeeperHub's `/sign` endpoint.
+* **Controller Response:** The Controller Policy Engine determines that \$15.00 exceeds the effective restricted cap of \$10.00, disallows the action, and prevents SweepGate from authorizing KeeperHub sweep execution.
 
 ### Scenario 5: Gradual Rehabilitation (Level 4 $\rightarrow$ 3 $\rightarrow$ 2 $\rightarrow$ 1 $\rightarrow$ 0)
 * **Setup:** An agent placed in `Level 4: Approval Required` performs 12 consecutive clean, low-risk, normal-range operations.

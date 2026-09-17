@@ -30,7 +30,10 @@ export function createDynamicAutonomyHook(options: DynamicAutonomyHookOptions) {
     let profile = options.store.getAgent(agentId);
 
     if (!profile) {
-      // Return safe allow if profile is uninitialized, but alert in metadata
+      // KNOWN LIMITATION (Phase 2.1): Unknown agent IDs currently default to an allow decision
+      // for bootstrap pass-through. Post-submission tooling will default unknown agents to
+      // Level 4 (Approval Required) or restricted autonomy. Mitigated because Gate 2 / SweepGate
+      // strictly validates agent identity and parameters before any value transfer occurs.
       return {
         decision: 'allow',
         reason: 'Unregistered agent profile — initial pass-through for bootstrap',
@@ -49,6 +52,9 @@ export function createDynamicAutonomyHook(options: DynamicAutonomyHookOptions) {
     const toolName = input.tool;
     const args = input.arguments || {};
 
+    // KNOWN LIMITATION (Phase 2.2): Missing destination falls back to zero address.
+    // In Gate 1 (coarse), this represents unknown destination at tool invocation time.
+    // Mitigated by Gate 2 / SweepGate which verifies actual blockchain contract destinations.
     const destination = typeof args.to === 'string'
       ? args.to
       : typeof args.destination === 'string'
@@ -60,7 +66,9 @@ export function createDynamicAutonomyHook(options: DynamicAutonomyHookOptions) {
     const chain = typeof args.chain === 'string' ? args.chain : (input.chain || 'base');
     const protocol = typeof args.protocol === 'string' ? args.protocol : 'taskmarket';
 
-    // Amount is often unknown or coarse at tool invocation time
+    // KNOWN LIMITATION (Phase 2.3): Missing amount falls back to 0.
+    // In Gate 1 (coarse), exact amount is often unknown prior to the HTTP 402 challenge.
+    // Mitigated by Gate 2 / SweepGate which evaluates the exact verified USDC spend amount.
     const amountUsd = typeof args.amountUsd === 'number' ? args.amountUsd : 0;
     const amountRaw = typeof args.amount === 'string' ? args.amount : '0';
 

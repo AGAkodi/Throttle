@@ -1,17 +1,13 @@
-import React, { useState } from 'react';
-import { ActionRecord, approveAction, rejectAction } from '../lib/api-client.js';
+import React from 'react';
+import { ActionRecord } from '../lib/api-client.js';
 import { RiskFactorBreakdown } from '../components/RiskFactorBreakdown.js';
 
 interface DecisionDetailProps {
   record: ActionRecord | null;
   onClose: () => void;
-  onActionUpdated?: (updated: ActionRecord) => void;
 }
 
-export const DecisionDetail: React.FC<DecisionDetailProps> = ({ record, onClose, onActionUpdated }) => {
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [submitFeedback, setSubmitFeedback] = useState<string | null>(null);
-
+export const DecisionDetail: React.FC<DecisionDetailProps> = ({ record, onClose }) => {
   if (!record) {
     return (
       <div className="glass-panel" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -21,34 +17,6 @@ export const DecisionDetail: React.FC<DecisionDetailProps> = ({ record, onClose,
   }
 
   const { action, decision, timestamp, executionStatus } = record;
-
-  const handleApprove = async () => {
-    setIsSubmitting(true);
-    setSubmitFeedback(null);
-    try {
-      const updated = await approveAction(record.id);
-      setSubmitFeedback('Action approved and executed successfully!');
-      onActionUpdated?.(updated);
-    } catch (err: any) {
-      setSubmitFeedback(`Error: ${err.message || err}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleReject = async () => {
-    setIsSubmitting(true);
-    setSubmitFeedback(null);
-    try {
-      const updated = await rejectAction(record.id);
-      setSubmitFeedback('Action rejected.');
-      onActionUpdated?.(updated);
-    } catch (err: any) {
-      setSubmitFeedback(`Error: ${err.message || err}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   return (
     <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -132,7 +100,7 @@ export const DecisionDetail: React.FC<DecisionDetailProps> = ({ record, onClose,
         </div>
       </div>
 
-      {/* Human Operator Action Bar for Level 4 Pending Approvals */}
+      {/* Custody Notice for Level 4 Pending Actions */}
       {(executionStatus === 'pending' || decision.requiresApproval) && (
         <div
           style={{
@@ -142,7 +110,7 @@ export const DecisionDetail: React.FC<DecisionDetailProps> = ({ record, onClose,
             border: '1px solid var(--lvl-4, #f59e0b)',
             display: 'flex',
             flexDirection: 'column',
-            gap: '12px',
+            gap: '8px',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -152,56 +120,10 @@ export const DecisionDetail: React.FC<DecisionDetailProps> = ({ record, onClose,
                 Level 4: Operator Approval Required
               </div>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                This action is held in custody pending human operator sign-off before value transfer.
+                This action is held in custody with <code>execution_status = 'pending'</code>. Operator approval execution flow is planned for next-stage tooling.
               </div>
             </div>
           </div>
-
-          <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
-            <button
-              onClick={handleApprove}
-              disabled={isSubmitting}
-              style={{
-                flex: 1,
-                padding: '10px 16px',
-                borderRadius: '8px',
-                border: 'none',
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '13px',
-                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                opacity: isSubmitting ? 0.7 : 1,
-                transition: 'all 0.2s',
-              }}
-            >
-              {isSubmitting ? 'Processing...' : '✓ Approve Action'}
-            </button>
-            <button
-              onClick={handleReject}
-              disabled={isSubmitting}
-              style={{
-                flex: 1,
-                padding: '10px 16px',
-                borderRadius: '8px',
-                border: '1px solid var(--lvl-5, #ef4444)',
-                background: 'rgba(239, 68, 68, 0.15)',
-                color: 'var(--lvl-5, #ef4444)',
-                fontWeight: 600,
-                fontSize: '13px',
-                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                opacity: isSubmitting ? 0.7 : 1,
-                transition: 'all 0.2s',
-              }}
-            >
-              {isSubmitting ? 'Processing...' : '✕ Reject Action'}
-            </button>
-          </div>
-          {submitFeedback && (
-            <div style={{ fontSize: '12px', fontWeight: 500, color: submitFeedback.includes('Error') ? '#ef4444' : '#10b981' }}>
-              {submitFeedback}
-            </div>
-          )}
         </div>
       )}
     </div>

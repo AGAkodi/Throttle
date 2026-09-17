@@ -90,6 +90,7 @@ describe('Daydreams / TaskMarket Adapter', () => {
           data: {
             success: true,
             claimId: 'claim-123-abc',
+            txHash: '0xmockclaimtxhash123',
           },
         };
       }
@@ -245,6 +246,60 @@ describe('Daydreams / TaskMarket Adapter', () => {
     expect(result.success).toBe(false);
     expect(result.stage).toBe('settlement');
     expect(result.error).toContain('Task not available for claiming');
+  });
+
+  it('fails loudly when legacy claim response lacks an on-chain transaction hash (no claimId fallback)', async () => {
+    const store = new ThrottleStore(':memory:');
+    const profile = createDefaultProfile('agent-no-txhash', 'NoTxHashAgent');
+    store.saveAgent(profile);
+
+    class MockTaskMarketNoTxClient extends TaskMarketClient {
+      constructor() {
+        super('http://mock-taskmarket.local');
+      }
+
+      public override async listOpenTasks() {
+        return [
+          {
+            id: 'task-notx-001',
+            title: 'No TxHash Task',
+            type: 'bounty',
+            mode: 'claim' as const,
+            status: 'open' as const,
+            creatorAddress: '0x1234567890123456789012345678901234567890',
+            createdAt: new Date().toISOString(),
+          },
+        ];
+      }
+
+      public override async claimTask(_taskId: string, _workerAddress: string, _signature: string) {
+        return {
+          status: 200,
+          success: true,
+          claimId: 'claim-no-hash-999',
+          data: {
+            success: true,
+            claimId: 'claim-no-hash-999',
+          },
+        };
+      }
+    }
+
+    const testPrivateKey = '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f361b97';
+    const mockClient = new MockTaskMarketNoTxClient();
+    const agent = new TaskMarketAgent({
+      agentId: 'agent-no-txhash',
+      workerAddress: '0x1234567890123456789012345678901234567890',
+      store,
+      client: mockClient,
+      agentPrivateKey: testPrivateKey,
+    });
+
+    const result = await agent.runCycle();
+
+    expect(result.success).toBe(false);
+    expect(result.stage).toBe('settlement');
+    expect(result.error).toBe('Claim response did not contain an on-chain transaction hash');
   });
 
   it('runs task creation cycle and builds ConfirmedSpendEvent from confirmed task settlement', async () => {

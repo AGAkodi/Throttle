@@ -33,9 +33,6 @@ export interface ConfirmedSpendEvent {
   recipientAddress?: string;
 }
 
-/** @deprecated Alias for backwards compatibility */
-export type EarningsReceivedEvent = ConfirmedSpendEvent;
-
 export interface SweepGateConfig {
   store: ThrottleStore;
   keeperHubApiKey?: string;

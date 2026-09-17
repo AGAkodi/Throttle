@@ -164,8 +164,13 @@ export class KeeperHubMcpClient {
     const maxWaitMs = options?.maxWaitMs ?? 30000;
     const pollIntervalMs = options?.pollIntervalMs ?? 1500;
     const startTime = Date.now();
+    let pollAttempts = 0;
+    let lastNetworkError: any = null;
+    let lastStatus: string | null = null;
+    let lastStatusObj: any = null;
 
     while (Date.now() - startTime < maxWaitMs) {
+      pollAttempts++;
       let res: Response | null = null;
       try {
         res = await fetch(`${baseUrl}/api/workflows/executions/${executionId}/status`, {
@@ -174,7 +179,9 @@ export class KeeperHubMcpClient {
             'Accept': 'application/json',
           },
         });
-      } catch {
+        lastNetworkError = null;
+      } catch (err: any) {
+        lastNetworkError = err;
         // Network blip while polling status, wait and retry on next interval
         await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
         continue;
@@ -188,6 +195,8 @@ export class KeeperHubMcpClient {
       const body = await res.json() as any;
       const statusObj = body.status || body;
       const statusStr = statusObj.status || body.status || 'unknown';
+      lastStatus = statusStr;
+      lastStatusObj = statusObj;
 
       const txHashes = statusObj.transactionHashes || body.transactionHashes || [];
       const primaryTxHash = txHashes[0]?.hash || txHashes[0] || statusObj.txHash || body.txHash;
@@ -215,7 +224,15 @@ export class KeeperHubMcpClient {
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
 
-    throw new Error(`[KeeperHub MCP] Workflow execution ${executionId} timed out after ${maxWaitMs}ms`);
+    const elapsedMs = Date.now() - startTime;
+    const detailParts: string[] = [`${pollAttempts} poll attempts`, `elapsed ${elapsedMs}ms`];
+    if (lastStatus) {
+      detailParts.push(`last status: '${lastStatus}'`);
+    }
+    if (lastNetworkError) {
+      detailParts.push(`last network error: ${lastNetworkError.message || lastNetworkError}`);
+    }
+    throw new Error(`[KeeperHub MCP] Workflow execution ${executionId} timed out after ${maxWaitMs}ms (${detailParts.join(', ')})`);
   }
 
 }

@@ -10,7 +10,6 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import crypto from 'crypto';
 import { ThrottleStore, createDefaultProfile } from '@throttle/controller';
 import { SweepGate, ConfirmedSpendEvent } from '@throttle/keeperhub-adapter';
 import { TaskMarketClient, CreateTaskParams, CreatedTaskResult } from '../../src/taskmarket-client.js';
@@ -43,37 +42,24 @@ describe('Live Two-Leg Architecture Integration Test', () => {
     const profile = createDefaultProfile('agent-two-leg-integration', 'TwoLegIntegrationAgent');
     store.saveAgent(profile);
 
-    const treasuryAddress = process.env.THROTTLE_TREASURY_ADDRESS || '0x9e88D37203a2a5C65e8E63040719B6D939718A9F';
-    const isSimulate = !isLiveEnvConfigured;
-
-    // Leg 1 Client (uses simulated client if live private key is not in environment)
-    class IntegrationTaskMarketClient extends TaskMarketClient {
-      public override async createAndSettleTask(params: CreateTaskParams): Promise<CreatedTaskResult> {
-        if (!isSimulate && process.env.AGENT_WALLET_PRIVATE_KEY) {
-          return super.createAndSettleTask(params);
-        }
-        const mockTaskId = 'task_int_' + crypto.randomBytes(8).toString('hex');
-        const mockTxHash = '0x' + crypto.randomBytes(32).toString('hex');
-        const mockIntentId = 'intent_int_' + crypto.randomUUID();
-        return {
-          taskId: mockTaskId,
-          txHash: mockTxHash,
-          intentId: mockIntentId,
-          status: 'created',
-          rawResponse: { success: true, taskId: mockTaskId, intentId: mockIntentId },
-        };
-      }
+    if (!isLiveEnvConfigured) {
+      console.log('[Integration] Skipping live two-leg integration test: required credentials (AGENT_WALLET_PRIVATE_KEY, KEEPERHUB_API_KEY, THROTTLE_TREASURY_ADDRESS) are not set. Refusing to degrade silently to mock values.');
+      return;
     }
 
+    const treasuryAddress = process.env.THROTTLE_TREASURY_ADDRESS!;
+    const agentPrivateKey = process.env.AGENT_WALLET_PRIVATE_KEY!;
+    const keeperHubApiKey = process.env.KEEPERHUB_API_KEY!;
     const taskMarketUrl = process.env.TASKMARKET_API_URL || 'https://api.taskmarket.dev';
-    const client = new IntegrationTaskMarketClient(taskMarketUrl);
+
+    const client = new TaskMarketClient(taskMarketUrl);
 
     const agent = new TaskMarketAgent({
       agentId: 'agent-two-leg-integration',
-      workerAddress: '0x1234567890123456789012345678901234567890',
+      workerAddress: process.env.WORKER_ADDRESS || '0x1234567890123456789012345678901234567890',
       store,
       client,
-      agentPrivateKey: process.env.AGENT_WALLET_PRIVATE_KEY || '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f361b97',
+      agentPrivateKey,
     });
 
     // ------------------------------------------------------------------------
@@ -102,11 +88,11 @@ describe('Live Two-Leg Architecture Integration Test', () => {
     console.log('[Two-Leg Test] Executing Leg 2 SweepGate Evaluation & Sweep...');
     const sweepGate = new SweepGate({
       store,
-      keeperHubApiKey: process.env.KEEPERHUB_API_KEY || 'mock_kh_key',
+      keeperHubApiKey,
       keeperHubBaseUrl: process.env.KEEPERHUB_BASE_URL || 'https://app.keeperhub.com',
       sweepWorkflowId: process.env.KEEPERHUB_SWEEP_WORKFLOW_ID || 'wf-treasury-sweep-01',
       treasuryAddress,
-      simulationMode: isSimulate,
+      simulationMode: false,
     });
 
     const sweepResult = await sweepGate.handleConfirmedSpend(

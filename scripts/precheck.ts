@@ -175,7 +175,7 @@ async function main() {
   }
 
   // Check requirements:
-  // Agent wallet: enough USDC for at least one 0.001 USDC claim fee (1,000 raw units)
+  // Agent wallet: enough USDC for at least one 0.001 USDC task creation escrow fee (1,000 raw units)
   // Org wallet: enough ETH for gas plus enough USDC to match expected sweep amount
   console.log('\n----------------------------------------------------------------');
   console.log('FUNDING & BALANCE VERIFICATION');
@@ -188,7 +188,7 @@ async function main() {
   if (agentUsdcBalance < MIN_AGENT_USDC_RAW) {
     fundingNeeded = true;
     fundingIssues.push(
-      `Agent wallet (${agentAddress}) has ${agentUsdcFormatted} USDC, but needs at least 0.001 USDC (1,000 raw units) to pay claim fee.`
+      `Agent wallet (${agentAddress}) has ${agentUsdcFormatted} USDC, but needs at least 0.001 USDC (1,000 raw units) to fund task creation escrow.`
     );
   }
 

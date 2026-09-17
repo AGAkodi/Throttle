@@ -169,10 +169,6 @@ export const App: React.FC = () => {
                   <DecisionDetail
                     record={selectedRecord}
                     onClose={() => setSelectedRecord(null)}
-                    onActionUpdated={(updated) => {
-                      setActions((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-                      setSelectedRecord(updated);
-                    }}
                   />
                 )}
               </div>

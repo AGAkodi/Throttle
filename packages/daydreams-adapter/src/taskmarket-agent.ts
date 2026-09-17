@@ -1,7 +1,8 @@
 /**
  * TaskMarket Demo Agent
- * Autonomous agent that interacts with TaskMarket tasks, routing payments through
- * Dynamic Policy Groups and Gate 2 SignGate before KeeperHub signing.
+ * Autonomous agent that interacts with TaskMarket tasks, routing task creation through
+ * Dynamic Policy Groups and emitting confirmed spend events for downstream Throttle evaluation
+ * and KeeperHub treasury sweeps.
  */
 
 import { ThrottleStore, AgentProfile } from '@throttle/controller';
@@ -9,7 +10,6 @@ import {
   TaskMarketClient,
   TaskMarketTask,
   ConfirmedSpendEvent,
-  EarningsReceivedEvent,
   signTransferWithAuthorization,
   signClaimMessage,
   X402ChallengeData,
@@ -34,8 +34,6 @@ export interface TaskExecutionResult {
   claimId?: string;
   txHash?: string;
   confirmedSpend?: ConfirmedSpendEvent;
-  /** @deprecated Alias for confirmedSpend */
-  earningsReceived?: ConfirmedSpendEvent;
   error?: string;
 }
 
@@ -165,16 +163,31 @@ export class TaskMarketAgent {
     }
 
     const claimId = claimResult.claimId || claimResult.data?.claimId || candidateTask.id;
-    // LEGACY / SUPERSEDED NOTE:
-    // TaskMarket claim response returns a claimId; on-chain worker settlement happens asynchronously upon task acceptance.
-    // In this legacy exploratory claim path, claimId is retained as fallback reference.
-    // The active live path (runTaskCreationCycle) does NOT use this fallback and receives verified on-chain transaction hashes.
     const txHash =
       claimResult.data?.txHash ||
       claimResult.data?.transactionHash ||
       claimResult.data?.hash ||
-      claimResult.data?.reference ||
-      claimId;
+      claimResult.data?.reference;
+
+    if (!txHash) {
+      const errorMsg = 'Claim response did not contain an on-chain transaction hash';
+      this.emitter.emit({
+        agentId,
+        actionId: candidateTask.id,
+        type: 'failure',
+        error: errorMsg,
+      });
+
+      return {
+        taskId: candidateTask.id,
+        success: false,
+        stage: 'settlement',
+        authorityLevel: profile.currentAuthorityLevel,
+        signature: claimSignature,
+        claimId,
+        error: errorMsg,
+      };
+    }
 
     const rawUnits = BigInt(candidateTask.reward || '0');
     const amountUsd = Number(rawUnits) / 1_000_000;
@@ -203,7 +216,6 @@ export class TaskMarketAgent {
       claimId,
       txHash,
       confirmedSpend,
-      earningsReceived: confirmedSpend,
     };
   }
 

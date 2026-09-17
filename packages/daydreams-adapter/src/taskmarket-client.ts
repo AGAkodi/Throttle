@@ -35,7 +35,7 @@ import type { Hex } from 'viem';
 
 /**
  * Confirmed outbound spend event emitted when the agent successfully
- * settles a TaskMarket claim fee via on-chain transaction.
+ * settles a TaskMarket task creation escrow via on-chain transaction.
  */
 export interface ConfirmedSpendEvent {
   amount: string; // raw base units (e.g. "1000000" for 1 USDC)
@@ -46,9 +46,6 @@ export interface ConfirmedSpendEvent {
   tokenSymbol: string;
   recipientAddress?: string;
 }
-
-/** @deprecated Alias for backwards compatibility */
-export type EarningsReceivedEvent = ConfirmedSpendEvent;
 
 export interface X402ChallengeData {
   chain?: string;
@@ -251,8 +248,8 @@ export class TaskMarketClient {
 
     const taskPayload = {
       description: params.description || 'Autonomous claim task for Throttle dynamic autonomy pipeline verification',
-      // Task duration in seconds (defaults to 86400 = 24 hours, confirmed on-chain on TaskMarket)
-      duration: params.duration ?? 86400,
+      // Task duration in hours (defaults to 24 hours, TaskMarket API expects hours)
+      duration: params.duration ?? 24,
       tags: params.tags ?? ['throttle-verification', 'claim-mode'],
       mode: params.mode ?? 'claim',
       taskVisibility: params.taskVisibility ?? 'public',
@@ -368,25 +365,32 @@ export class TaskMarketClient {
       const conflictBody = (await createRes.json().catch(() => ({}))) as any;
       const conflictReason = conflictBody?.taskmarket?.reason || conflictBody?.reason || '';
 
-      // Non-retryable conflicts fail loudly immediately rather than hanging in polling loop
-      if (
-        conflictReason === 'idempotency_key_payload_mismatch' ||
-        conflictReason === 'payment_already_spent'
-      ) {
-        throw new Error(
-          `Task creation failed with non-retryable HTTP 409 conflict (${conflictReason}): ${JSON.stringify(conflictBody)}`
-        );
-      }
+      switch (conflictReason) {
+        case 'idempotency_key_payload_mismatch':
+        case 'idempotency_key_conflict':
+        case 'payment_already_spent':
+          throw new Error(
+            `Task creation failed with non-retryable HTTP 409 conflict (${conflictReason}): ${JSON.stringify(conflictBody)}`
+          );
 
-      // In-flight paid write: poll intent by idempotency key
-      const pollResult = await this.waitForIntentTerminalByIdempotencyKey(idempotencyKey);
-      return {
-        taskId: pollResult.data.taskId,
-        txHash: pollResult.txHash,
-        intentId: pollResult.data.intentId,
-        status: pollResult.status,
-        rawResponse: pollResult.data,
-      };
+        case 'intent_in_flight':
+        case 'idempotency_key_reused': {
+          // In-flight paid write or reused idempotency key: poll intent by idempotency key
+          const pollResult = await this.waitForIntentTerminalByIdempotencyKey(idempotencyKey);
+          return {
+            taskId: pollResult.data.taskId,
+            txHash: pollResult.txHash,
+            intentId: pollResult.data.intentId,
+            status: pollResult.status,
+            rawResponse: pollResult.data,
+          };
+        }
+
+        default:
+          throw new Error(
+            `Task creation failed with unhandled HTTP 409 conflict (${conflictReason || 'unknown_reason'}): ${JSON.stringify(conflictBody)}`
+          );
+      }
     }
 
     if (!createRes.ok) {
@@ -408,8 +412,11 @@ export class TaskMarketClient {
       const start = Date.now();
       const timeoutMs = 60000;
       const intervalMs = 2000;
+      let lastErr: any = null;
+      let pollAttempts = 0;
 
       while (Date.now() - start < timeoutMs) {
+        pollAttempts++;
         // 1. Try polling GET /api/intents
         if (intentId || idempotencyKey) {
           try {
@@ -423,10 +430,13 @@ export class TaskMarketClient {
               throw new Error(`Intent reached terminal state 'failed': ${intent.terminalReason || 'unknown'}`);
             }
           } catch (err: any) {
+            lastErr = err;
             if (
               err.message?.includes('reached terminal state') ||
               err.message?.includes('HTTP 401') ||
-              err.message?.includes('HTTP 403')
+              err.message?.includes('HTTP 403') ||
+              err.message?.includes('HTTP 400') ||
+              err.message?.includes('HTTP 422')
             ) {
               throw err;
             }
@@ -445,8 +455,19 @@ export class TaskMarketClient {
                 txHash = taskObj.escrowTxHash;
                 break;
               }
+            } else if (taskRes.status === 401 || taskRes.status === 403 || taskRes.status === 400) {
+              throw new Error(`Task query failed: HTTP ${taskRes.status}`);
             }
-          } catch {}
+          } catch (err: any) {
+            lastErr = err;
+            if (
+              err.message?.includes('Task query failed') ||
+              err.message?.includes('HTTP 401') ||
+              err.message?.includes('HTTP 403')
+            ) {
+              throw err;
+            }
+          }
 
           // 3. Also check listOpenTasks
           try {
@@ -456,15 +477,18 @@ export class TaskMarketClient {
               txHash = (found as any).escrowTxHash;
               break;
             }
-          } catch {}
+          } catch (err: any) {
+            lastErr = err;
+          }
         }
 
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
       }
-    }
 
-    if (!txHash) {
-      throw new Error(`Task creation succeeded (taskId: ${taskId}, intentId: ${intentId}) but no terminal on-chain txHash was confirmed within 60s. Refusing to fabricate one.`);
+      if (!txHash) {
+        const detail = lastErr ? ` (last error: ${lastErr.message || lastErr})` : '';
+        throw new Error(`Task creation succeeded (taskId: ${taskId}, intentId: ${intentId}) but no terminal on-chain txHash was confirmed within ${timeoutMs / 1000}s (${pollAttempts} poll attempts)${detail}. Refusing to fabricate one.`);
+      }
     }
 
     return {
@@ -503,7 +527,11 @@ export class TaskMarketClient {
     intervalMs = 2000
   ): Promise<{ txHash: string; status: string; data: any }> {
     const start = Date.now();
+    let lastErr: any = null;
+    let attempts = 0;
+
     while (Date.now() - start < timeoutMs) {
+      attempts++;
       try {
         const intent = await this.pollIntent({ intentId });
         if (intent.status === 'completed' && intent.txHash) {
@@ -513,17 +541,21 @@ export class TaskMarketClient {
           throw new Error(`Intent ${intentId} reached terminal state 'failed': ${intent.terminalReason || 'unknown'}`);
         }
       } catch (err: any) {
+        lastErr = err;
         if (
           err.message?.includes('reached terminal state') ||
           err.message?.includes('HTTP 401') ||
-          err.message?.includes('HTTP 403')
+          err.message?.includes('HTTP 403') ||
+          err.message?.includes('HTTP 400') ||
+          err.message?.includes('HTTP 422')
         ) {
           throw err;
         }
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
-    throw new Error(`Intent ${intentId} did not reach terminal state within ${timeoutMs / 1000}s`);
+    const detail = lastErr ? `: ${lastErr.message || lastErr}` : '';
+    throw new Error(`Intent ${intentId} did not reach terminal state within ${timeoutMs / 1000}s (${attempts} attempts)${detail}`);
   }
 
   /**
@@ -535,7 +567,11 @@ export class TaskMarketClient {
     intervalMs = 2000
   ): Promise<{ txHash: string; status: string; data: any }> {
     const start = Date.now();
+    let lastErr: any = null;
+    let attempts = 0;
+
     while (Date.now() - start < timeoutMs) {
+      attempts++;
       try {
         const intent = await this.pollIntent({ idempotencyKey });
         if (intent.status === 'completed' && intent.txHash) {
@@ -545,17 +581,21 @@ export class TaskMarketClient {
           throw new Error(`Intent for idempotency key ${idempotencyKey} reached terminal state 'failed': ${intent.terminalReason || 'unknown'}`);
         }
       } catch (err: any) {
+        lastErr = err;
         if (
           err.message?.includes('reached terminal state') ||
           err.message?.includes('HTTP 401') ||
-          err.message?.includes('HTTP 403')
+          err.message?.includes('HTTP 403') ||
+          err.message?.includes('HTTP 400') ||
+          err.message?.includes('HTTP 422')
         ) {
           throw err;
         }
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
-    throw new Error(`Intent for idempotency key ${idempotencyKey} did not reach terminal state within ${timeoutMs / 1000}s`);
+    const detail = lastErr ? `: ${lastErr.message || lastErr}` : '';
+    throw new Error(`Intent for idempotency key ${idempotencyKey} did not reach terminal state within ${timeoutMs / 1000}s (${attempts} attempts)${detail}`);
   }
 }
 

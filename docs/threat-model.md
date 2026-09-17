@@ -49,11 +49,11 @@ This document formalizes the threat vectors, trust boundaries, defense layers, a
   3. **Multi-Level Step-Down:** Authority decreases smoothly ($0 \rightarrow 1 \rightarrow 2 \rightarrow 3 \rightarrow 4$) as drift score rises, preventing sudden catastrophic loss of governance.
 
 ### 2.4 Controller Failure or Unavailability (Fail-Closed Architecture)
-* **Threat:** The Throttle Controller crashes, runs out of memory, or encounters a database deadlock during a payment challenge.
-* **Attack Mechanism:** The agent attempts to bypass authority evaluation during the outage.
+* **Threat:** The Throttle Controller crashes, runs out of memory, or encounters a database deadlock during spend evaluation or sweep authorization.
+* **Attack Mechanism:** The agent or an automated workflow attempts to execute treasury sweeps without controller authorization during an outage.
 * **Defense:**
-  1. **Fail-Closed Sign-Gate:** `sign-gate.ts` strictly wraps `POST /api/agentic-wallet/sign`. If the controller throws an exception or fails to produce an explicit `proceed` action, the signature request is *never* sent to KeeperHub.
-  2. **No Default Signatures:** Without a valid cryptographic signature returned from KeeperHub, TaskMarket rejects the payment challenge with HTTP 402 / 401.
+  1. **Fail-Closed SweepGate:** `sweep-gate.ts` strictly wraps KeeperHub workflow execution (`POST /api/workflows/{id}/execute`). If the controller throws an exception, encounters an error, or fails to produce an explicit `proceed` action, the sweep workflow is *never* dispatched to KeeperHub.
+  2. **No Default Executions:** Without explicit controller clearance, no on-chain treasury transfer can be triggered. (The exploratory `sign-gate.ts` wrapper for `/api/agentic-wallet/sign` remains archived as legacy documentation).
 
 ### 2.5 KeeperHub Execution or Blockchain Settlement Failure
 * **Threat:** Base network congestion, gas spikes, or KeeperHub Turnkey service timeouts cause transaction execution to fail.
@@ -61,6 +61,14 @@ This document formalizes the threat vectors, trust boundaries, defense layers, a
 * **Defense:**
   1. **Exponential Backoff & Failure Tracking:** `behavior-emitter.ts` tracks retry counts and failures.
   2. **Retry Spike Penalty:** Experiencing $\ge 3$ rapid retries penalizes trust by $-10$ points and triggers risk engine retry factors (+15 points), lowering the agent's authority level before funds are locked or wasted.
+
+### 2.6 Gate 1 (PreToolUse) Coarse Interception Limitations & Two-Gate Defense
+* **Threat:** An uninitialized or unknown agent ID calls a tool, or tool arguments lack explicit destination/amount values before an HTTP 402 challenge exists.
+* **Current Boundary:**
+  1. **Unknown Agent Bootstrap:** In Gate 1 (`pretooluse-hook.ts`), unrecognized agent IDs pass through with an initial Level 0 bootstrap allow rather than failing closed.
+  2. **Indeterminate Arguments:** Missing destination or amount arguments default to the zero address (`0x00...00`) and `$0.00` because real payment parameters are created during the downstream HTTP 402 handshake.
+* **Defense-in-Depth Mitigation:**
+  Gate 1 is strictly an advisory coarse pre-filter at prompt/tool invocation time. Real financial spend and Turnkey wallet interaction occur strictly at Gate 2 / SweepGate, where confirmed HTTP 402 challenge parameters, cryptographic signatures, and actual blockchain destinations are evaluated before any value leaves the treasury.
 
 ---
 

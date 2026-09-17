@@ -2,7 +2,7 @@
   "name": "@throttle/keeperhub-adapter",
   "version": "0.1.0",
   "type": "module",
-  "description": "KeeperHub Adapter providing dual PreToolUse and sign-gate interception for Throttle",
+  "description": "KeeperHub Adapter providing PreToolUse hook, SweepGate, and MCP workflow client for Throttle",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

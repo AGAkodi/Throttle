@@ -105,32 +105,6 @@ export async function fetchActions(limit = 50): Promise<ActionRecord[]> {
   return await res.json();
 }
 
-export async function approveAction(actionId: string): Promise<ActionRecord> {
-  const apiBase = getApiBase();
-  const res = await fetch(`${apiBase}/api/actions/${encodeURIComponent(actionId)}/approve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to approve action: HTTP ${res.status}`);
-  }
-  const data = await res.json();
-  return data.record;
-}
-
-export async function rejectAction(actionId: string): Promise<ActionRecord> {
-  const apiBase = getApiBase();
-  const res = await fetch(`${apiBase}/api/actions/${encodeURIComponent(actionId)}/reject`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to reject action: HTTP ${res.status}`);
-  }
-  const data = await res.json();
-  return data.record;
-}
-
 export interface TelemetryPayload {
   type: string;
   record?: ActionRecord;
