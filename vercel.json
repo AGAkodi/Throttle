@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm run build && node scripts/prepare-vercel.mjs",
+  "outputDirectory": "dist_deploy",
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/dashboard", "destination": "/dashboard/index.html" },
+    { "source": "/operator", "destination": "/dashboard/index.html" }
+  ]
+}
