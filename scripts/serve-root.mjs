@@ -26,7 +26,12 @@ const server = http.createServer((req, res) => {
   }
 
   let reqPath = req.url === '/' ? '/index.html' : req.url.split('?')[0];
-  const filePath = path.join(rootDir, reqPath);
+  const deployDir = path.join(rootDir, 'dist_deploy');
+  const baseDir = fs.existsSync(deployDir) ? deployDir : rootDir;
+  let filePath = path.join(baseDir, reqPath);
+  if (!fs.existsSync(filePath) && fs.existsSync(path.join(rootDir, reqPath))) {
+    filePath = path.join(rootDir, reqPath);
+  }
 
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const ext = path.extname(filePath).toLowerCase();
