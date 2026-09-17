@@ -16,7 +16,8 @@
     "dev:frontend": "node scripts/serve-root.mjs",
     "start": "node scripts/serve-root.mjs",
     "dev:controller": "tsx scripts/run-server.ts",
-    "dev:dashboard": "pnpm --filter @throttle/dashboard dev"
+    "dev:dashboard": "pnpm --filter @throttle/dashboard dev",
+    "build:vercel": "node scripts/prepare-vercel.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
