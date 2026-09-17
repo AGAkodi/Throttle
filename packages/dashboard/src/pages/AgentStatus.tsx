@@ -19,7 +19,7 @@ export const AgentStatus: React.FC<AgentStatusProps> = ({ agent, latestAction, i
         <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
           {isConnected
             ? 'Execute an agent task or run a simulation to register state in the SQLite store.'
-            : 'Awaiting connection to controller on http://localhost:4000. Start the server with `pnpm dev:controller`.'}
+            : 'Connecting to Throttle Controller stream or initializing offline demo sandbox...'}
         </p>
       </div>
     );

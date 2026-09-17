@@ -27,7 +27,9 @@ export const Nav: React.FC<NavProps> = ({ isConnected = true, apiBase = 'http://
           <div id="connectionStatus" className="api-status-badge" title="Throttle Controller Status">
             <span className={`api-status-dot ${!isConnected ? 'offline' : ''}`} id="apiDot"></span>
             <span id="apiStatusText">
-              {isConnected ? `Controller: Online (${apiBase.replace(/^https?:\/\//, '')})` : 'Controller: Connecting...'}
+              {isConnected 
+                ? `Controller: Online (${apiBase ? apiBase.replace(/^https?:\/\//, '') : 'Live Cloud'})` 
+                : 'Controller: Connecting...'}
             </span>
           </div>
           <a

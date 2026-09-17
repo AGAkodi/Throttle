@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { fetchAgents, fetchActions, subscribeToTelemetry, AgentProfile, ActionRecord, getApiBase } from './lib/api-client.js';
+import { fetchAgents, fetchActions, subscribeToTelemetry, AgentProfile, ActionRecord, getApiBase, DEFAULT_PROFILE, DEFAULT_ACTIONS } from './lib/api-client.js';
 import { Nav } from './components/landing/Nav.js';
 import { Hero } from './components/landing/Hero.js';
 import { Overview } from './components/landing/Overview.js';
@@ -13,9 +13,9 @@ import { ActivityFeed } from './pages/ActivityFeed.js';
 import { DecisionDetail } from './pages/DecisionDetail.js';
 
 export const App: React.FC = () => {
-  const [agents, setAgents] = useState<AgentProfile[]>([]);
-  const [actions, setActions] = useState<ActionRecord[]>([]);
-  const [selectedRecord, setSelectedRecord] = useState<ActionRecord | null>(null);
+  const [agents, setAgents] = useState<AgentProfile[]>([DEFAULT_PROFILE]);
+  const [actions, setActions] = useState<ActionRecord[]>(DEFAULT_ACTIONS);
+  const [selectedRecord, setSelectedRecord] = useState<ActionRecord | null>(DEFAULT_ACTIONS[0] || null);
   const [isConnected, setIsConnected] = useState<boolean>(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
@@ -25,14 +25,14 @@ export const App: React.FC = () => {
         fetchAgents(),
         fetchActions(),
       ]);
-      setAgents(loadedAgents);
-      setActions(loadedActions);
+      if (loadedAgents.length > 0) setAgents(loadedAgents);
+      if (loadedActions.length > 0) setActions(loadedActions);
       setIsConnected(true);
       setConnectionError(null);
       setSelectedRecord((prev) => {
         if (!prev && loadedActions.length > 0) return loadedActions[0];
         if (prev && loadedActions.some((a) => a.id === prev.id)) return prev;
-        return loadedActions[0] || null;
+        return loadedActions[0] || DEFAULT_ACTIONS[0] || null;
       });
     } catch (err) {
       setIsConnected(false);
