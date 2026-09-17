@@ -7,11 +7,7 @@ export const Footer: React.FC = () => {
         <div className="footer-grid">
           <div className="footer-brand">
             <div className="brand">
-              <span className="brand-mark">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M4 18L10 6L14 14L20 4" stroke="#d6f45c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </span>
+              <img src="/logo.png" alt="Throttle Logo" className="brand-logo" />
               Throttle
             </div>
             <p>
