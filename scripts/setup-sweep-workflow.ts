@@ -359,9 +359,15 @@ async function main() {
   console.log('STEP 5: Simulate Execution via POST /api/workflows/{id}/execute');
   console.log('--------------------------------------------------');
 
+  const treasuryRecipient = process.env.THROTTLE_TREASURY_ADDRESS || process.env.TREASURY_ADDRESS;
+  if (!treasuryRecipient) {
+    console.error('[FATAL] Missing required THROTTLE_TREASURY_ADDRESS in environment. Refusing to default to generic placeholder.');
+    process.exit(1);
+  }
+
   const testPayload = {
     input: {
-      recipientAddress: process.env.THROTTLE_TREASURY_ADDRESS || process.env.TREASURY_ADDRESS || '0xa8dA1FE17cf59ECd4098A4b3Df7894A4456517c4',
+      recipientAddress: treasuryRecipient,
       amount: '1.00',
       simulate: true,
     },

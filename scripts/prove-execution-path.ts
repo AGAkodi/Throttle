@@ -32,7 +32,9 @@ try {
 import crypto from 'crypto';
 import 'dotenv/config';
 import { privateKeyToAccount } from 'viem/accounts';
+import { createPublicClient, http, parseAbiItem, decodeEventLog } from 'viem';
 import type { Hex } from 'viem';
+import { base } from 'viem/chains';
 import { ThrottleStore, createDefaultProfile, AuthorityLevel } from '@throttle/controller';
 import { SweepGate, ConfirmedSpendEvent } from '@throttle/keeperhub-adapter';
 import {
@@ -215,6 +217,84 @@ async function main() {
     }
   } catch {
     // Controller server not currently active; persistence in SQLite is already saved
+  }
+
+  // --------------------------------------------------------------------------
+  // ON-CHAIN INDEPENDENT VERIFICATION (BASE MAINNET RPC)
+  // --------------------------------------------------------------------------
+  if (!IS_SIMULATE) {
+    console.log('\n----------------------------------------------------------------');
+    console.log('ON-CHAIN INDEPENDENT VERIFICATION (BASE MAINNET RPC)');
+    console.log('----------------------------------------------------------------');
+    console.log(`[Verification] Querying Base RPC for KeeperHub sweep receipt: ${sweepResult.txHash}`);
+
+    const baseRpcUrl = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
+    const publicClient = createPublicClient({
+      chain: base,
+      transport: http(baseRpcUrl),
+    });
+
+    console.log(`[Verification] Awaiting on-chain confirmation (RPC: ${baseRpcUrl})...`);
+    let receipt;
+    try {
+      receipt = await publicClient.waitForTransactionReceipt({
+        hash: sweepResult.txHash as Hex,
+        timeout: 60_000,
+      });
+    } catch (err: any) {
+      console.error(`\n[FATAL] Failed to fetch transaction receipt for ${sweepResult.txHash}: ${err.message || err}`);
+      process.exit(1);
+    }
+
+    if (receipt.status !== 'success') {
+      console.error(`\n[FATAL] On-chain transaction reverted! Status: ${receipt.status}`);
+      process.exit(1);
+    }
+
+    console.log(`[Verification] Receipt status: SUCCESS (Block #${receipt.blockNumber})`);
+    console.log(`[Verification] Gas Used: ${receipt.gasUsed.toString()}`);
+
+    // Assert USDC contract, recipient, and transfer event
+    const CANONICAL_BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'.toLowerCase();
+    const transferEventAbi = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)');
+
+    let verifiedTransfer: { from: string; to: string; value: bigint; contract: string } | null = null;
+    for (const log of receipt.logs) {
+      if (log.address.toLowerCase() === CANONICAL_BASE_USDC) {
+        try {
+          const decoded = decodeEventLog({
+            abi: [transferEventAbi],
+            data: log.data,
+            topics: log.topics,
+          });
+          if (decoded.eventName === 'Transfer') {
+            const { from, to, value } = decoded.args as { from: string; to: string; value: bigint };
+            if (to.toLowerCase() === TREASURY_ADDRESS.toLowerCase()) {
+              verifiedTransfer = { from, to, value, contract: log.address };
+              break;
+            }
+          }
+        } catch {
+          // Non-matching log or decoding error; ignore
+        }
+      }
+    }
+
+    if (!verifiedTransfer) {
+      console.error(
+        `\n[FATAL] On-chain verification failed: Transaction ${sweepResult.txHash} did not contain a canonical USDC ` +
+        `transfer to confirmed treasury address (${TREASURY_ADDRESS})!`
+      );
+      process.exit(1);
+    }
+
+    console.log(`[Verification] Canonical Token: USDC (${verifiedTransfer.contract})`);
+    console.log(`[Verification] Source/Sender:   ${verifiedTransfer.from}`);
+    console.log(`[Verification] Confirmed Dest:  ${verifiedTransfer.to} (MATCHES THROTTLE_TREASURY_ADDRESS)`);
+    console.log(`[Verification] Confirmed Amount: ${verifiedTransfer.value.toString()} raw units (${(Number(verifiedTransfer.value) / 1e6).toFixed(6)} USDC)`);
+    console.log('[Verification] PASS: Leg 2 KeeperHub sweep independently verified on Base mainnet!');
+  } else {
+    console.log('\n[Simulation] Skipping on-chain Base RPC receipt verification (--simulate active).');
   }
 
   // --------------------------------------------------------------------------

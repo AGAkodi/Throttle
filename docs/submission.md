@@ -65,16 +65,19 @@ The two-leg execution path was executed and confirmed live on Base Mainnet with 
    - On-chain value movement for workers occurs strictly inbound upon the requester accepting completed work via `/accept`.  
    Rather than constructing an artificial, multi-party simulation (requester + worker lifecycle), we deliberately focused the MVP on the proven, authentic paid-write path: **task creation escrow funding**. Task creation requires a genuine HTTP 402 challenge, an EIP-3009 `TransferWithAuthorization` signature, and immediate on-chain settlement, providing an authentic trigger for Throttle's dynamic autonomy gating and downstream KeeperHub sweep.
 
-2. **Human Approval UI Webhook:**  
-   When the controller transitions to Level 4 (Approval Required), the proposed action is held in the controller store with `execution_status = 'pending'`. The human operator approves or rejects via the dashboard; automated push webhooks (e.g. Telegram/Slack/mobile push) are planned as next-stage tooling.
+2. **Human Approval External Push Webhooks:**  
+   When the controller transitions to Level 4 (Approval Required), the proposed action is held in the controller store with `execution_status = 'pending'`. Both the interactive React console (`packages/dashboard`) and the standalone console (`index.html`) provide real-time Approve and Reject controls backed by controller endpoints (`POST /api/actions/:id/approve` and `/reject`). Automated multi-channel external push notifications (e.g. Telegram/Slack/mobile push webhooks) are planned for next-stage production rollout.
 
 3. **External Task Deliverable Processing:**  
    The autonomous agent handles task creation, funding, and claim-signature generation; multi-modal automated deliverable evaluation (for bounties with off-chain evaluators) currently relies on external TaskMarket worker interactions.
 
+4. **Level 3 (Restricted Scope) Spend-Cap Transition Enforcement:**  
+   Post-transition policy re-evaluation is implemented in `packages/controller/src/evaluate.ts`. When an action causes an authority downgrade to Level 3 (Restricted), the policy engine immediately re-evaluates the proposed action against the 25% restricted spending limit, disallowing transitional actions that exceed the restricted threshold.
+
 ---
 
 ### 6. Contact Information
-* **Team:** Throttle Core Team
-* **GitHub Repository:** [Throttle Monorepo](https://github.com/Throttle/throttle)
-* **Discord Handle:** `@throttle_lead`
-* **Email:** `contact@throttle-controller.dev`
+* **Developer:** Gideon Akodi (`Monarch`)
+* **GitHub Repository:** [Throttle Monorepo](https://github.com/AGAkodi/Throttle)
+* **Discord / X Handle:** `@oxmonrch(discord)/@OxMonarch (X)`
+* **Email:** `talk2monarch77@gmail.com `

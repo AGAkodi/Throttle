@@ -81,18 +81,59 @@ export class SweepGate {
   ): Promise<SweepGateResult> {
     const store = this.config.store;
     const profile = store.getAgent(agentId);
-    const treasury =
-      targetTreasuryAddress ||
-      spend.recipientAddress ||
-      this.config.treasuryAddress ||
-      process.env.THROTTLE_TREASURY_ADDRESS ||
-      process.env.TREASURY_ADDRESS;
+    const isSimulate = Boolean(this.config.simulationMode);
+    let treasury: string | undefined;
+    let sourceName: string;
 
-    if (!treasury) {
-      throw new Error(
-        '[SweepGate] Missing required treasury address. Set THROTTLE_TREASURY_ADDRESS in environment or configure treasuryAddress on SweepGate. Refusing to default to generic placeholder.'
-      );
+    const envTreasury = process.env.THROTTLE_TREASURY_ADDRESS;
+    const legacyEnvTreasury = process.env.TREASURY_ADDRESS;
+
+    if (!isSimulate) {
+      // Real (non-simulate) run: THROTTLE_TREASURY_ADDRESS from environment is the ONLY permitted source.
+      if (!envTreasury) {
+        throw new Error(
+          '[SweepGate] Missing required THROTTLE_TREASURY_ADDRESS in environment for live run. Refusing to default or use any other source.'
+        );
+      }
+
+      treasury = envTreasury;
+      sourceName = 'env: THROTTLE_TREASURY_ADDRESS';
+
+      // Fail loudly if any other path supplies a contradicting address
+      if (targetTreasuryAddress && targetTreasuryAddress.toLowerCase() !== treasury.toLowerCase()) {
+        throw new Error(
+          `[SweepGate] Explicit targetTreasuryAddress (${targetTreasuryAddress}) contradicts env THROTTLE_TREASURY_ADDRESS (${treasury}). Refusing to execute.`
+        );
+      }
+      if (this.config.treasuryAddress && this.config.treasuryAddress.toLowerCase() !== treasury.toLowerCase()) {
+        throw new Error(
+          `[SweepGate] Configured treasuryAddress (${this.config.treasuryAddress}) contradicts env THROTTLE_TREASURY_ADDRESS (${treasury}). Refusing to execute.`
+        );
+      }
+    } else {
+      // Simulation mode: prefer env: THROTTLE_TREASURY_ADDRESS if present,
+      // fallback to legacy TREASURY_ADDRESS, config.treasuryAddress, or targetTreasuryAddress.
+      // (Note: spend.recipientAddress is intentionally excluded as it represents spend recipient, not treasury).
+      if (envTreasury) {
+        treasury = envTreasury;
+        sourceName = 'env: THROTTLE_TREASURY_ADDRESS';
+      } else if (legacyEnvTreasury) {
+        treasury = legacyEnvTreasury;
+        sourceName = 'env: TREASURY_ADDRESS';
+      } else if (this.config.treasuryAddress) {
+        treasury = this.config.treasuryAddress;
+        sourceName = 'config: treasuryAddress';
+      } else if (targetTreasuryAddress) {
+        treasury = targetTreasuryAddress;
+        sourceName = 'param: targetTreasuryAddress';
+      } else {
+        throw new Error(
+          '[SweepGate] Missing required treasury address. Set THROTTLE_TREASURY_ADDRESS in environment or configure treasuryAddress on SweepGate. Refusing to default to generic placeholder.'
+        );
+      }
     }
+
+    console.log(`[SweepGate] Resolved treasury destination: ${treasury} (source: ${sourceName})`);
 
     if (!profile) {
       return {

@@ -1,9 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ThrottleStore, createDefaultProfile, AuthorityLevel } from '@throttle/controller';
 import { SweepGate, ConfirmedSpendEvent } from '../src/sweep-gate.js';
 import { KeeperHubMcpClient } from '../src/mcp-client.js';
 
+const TEST_CONFIRMED_TREASURY = '0x9e88D37203a2a5C65e8E63040719B6D939718A9F';
+
 describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
+  beforeEach(() => {
+    process.env.THROTTLE_TREASURY_ADDRESS = TEST_CONFIRMED_TREASURY;
+  });
+
   it('Sweep-Gate: Authorizes and executes KeeperHub sweep for compliant confirmed spend', async () => {
     const store = new ThrottleStore(':memory:');
     const profile = createDefaultProfile('agent-sweep-test', 'SweepAgent');
@@ -14,7 +20,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
       keeperHubApiKey: 'mock_key',
       keeperHubBaseUrl: 'https://app.keeperhub.com',
       sweepWorkflowId: 'wf-treasury-sweep',
-      treasuryAddress: '0xa8dA1FE17cf59ECd4098A4b3Df7894A4456517c4',
+      treasuryAddress: TEST_CONFIRMED_TREASURY,
       simulationMode: true,
     });
 
@@ -53,7 +59,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
     const sweepGate = new SweepGate({
       store,
       keeperHubApiKey: 'mock_key',
-      treasuryAddress: '0xa8dA1FE17cf59ECd4098A4b3Df7894A4456517c4',
+      treasuryAddress: TEST_CONFIRMED_TREASURY,
       simulationMode: true,
     });
 
@@ -88,7 +94,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
     const sweepGate = new SweepGate({
       store,
       keeperHubApiKey: 'mock_key',
-      treasuryAddress: '0xa8dA1FE17cf59ECd4098A4b3Df7894A4456517c4',
+      treasuryAddress: TEST_CONFIRMED_TREASURY,
       simulationMode: true,
     });
 
@@ -132,7 +138,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
     const sweepGate = new SweepGate({
       store,
       mcpClient: new ErroringMcpClient(),
-      treasuryAddress: '0xa8dA1FE17cf59ECd4098A4b3Df7894A4456517c4',
+      treasuryAddress: TEST_CONFIRMED_TREASURY,
       simulationMode: false,
     });
 
@@ -186,7 +192,7 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
     const sweepGate = new SweepGate({
       store,
       mcpClient: new NoTxHashMcpClient(),
-      treasuryAddress: '0xa8dA1FE17cf59ECd4098A4b3Df7894A4456517c4',
+      treasuryAddress: TEST_CONFIRMED_TREASURY,
       simulationMode: false,
     });
 
@@ -267,6 +273,112 @@ describe('KeeperHub Adapter: Sweep-Gate (Gate 3)', () => {
       if (origEnv) process.env.THROTTLE_TREASURY_ADDRESS = origEnv;
       if (origFallback) process.env.TREASURY_ADDRESS = origFallback;
     }
+  });
+
+  it('Phase 0: Live mode strictly enforces THROTTLE_TREASURY_ADDRESS and logs resolution source', async () => {
+    const store = new ThrottleStore(':memory:');
+    const profile = createDefaultProfile('agent-phase0', 'Phase0Agent');
+    store.saveAgent(profile);
+
+    process.env.THROTTLE_TREASURY_ADDRESS = TEST_CONFIRMED_TREASURY;
+
+    const consoleSpy = vi.spyOn(console, 'log');
+
+    const sweepGate = new SweepGate({
+      store,
+      keeperHubApiKey: 'mock_key',
+      keeperHubBaseUrl: 'https://app.keeperhub.com',
+      sweepWorkflowId: 'wf-treasury-sweep',
+      simulationMode: true,
+    });
+
+    const spend: ConfirmedSpendEvent = {
+      amount: '10000',
+      amountUsd: 0.01,
+      txHash: '0xmockphase0',
+      taskId: 'task-phase0',
+      timestamp: Date.now(),
+      tokenSymbol: 'USDC',
+    };
+
+    const result = await sweepGate.handleConfirmedSpend('agent-phase0', spend);
+    expect(result.status).toBe('executed');
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      `[SweepGate] Resolved treasury destination: ${TEST_CONFIRMED_TREASURY} (source: env: THROTTLE_TREASURY_ADDRESS)`
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it('Phase 0: Live mode rejects contradicting treasury destinations loudly', async () => {
+    const store = new ThrottleStore(':memory:');
+    const profile = createDefaultProfile('agent-contradict', 'ContradictAgent');
+    store.saveAgent(profile);
+
+    process.env.THROTTLE_TREASURY_ADDRESS = TEST_CONFIRMED_TREASURY;
+
+    const spend: ConfirmedSpendEvent = {
+      amount: '10000',
+      amountUsd: 0.01,
+      txHash: '0xmockcontradict',
+      taskId: 'task-contradict',
+      timestamp: Date.now(),
+      tokenSymbol: 'USDC',
+    };
+
+    // Contradicting config in live mode
+    const badConfigGate = new SweepGate({
+      store,
+      keeperHubApiKey: 'mock_key',
+      sweepWorkflowId: 'wf-treasury-sweep',
+      treasuryAddress: '0x1111111111111111111111111111111111111111',
+      simulationMode: false,
+    });
+    await expect(badConfigGate.handleConfirmedSpend('agent-contradict', spend)).rejects.toThrow(
+      /contradicts env THROTTLE_TREASURY_ADDRESS/
+    );
+
+    // Contradicting param in live mode
+    const goodConfigGate = new SweepGate({
+      store,
+      keeperHubApiKey: 'mock_key',
+      sweepWorkflowId: 'wf-treasury-sweep',
+      treasuryAddress: TEST_CONFIRMED_TREASURY,
+      simulationMode: false,
+    });
+    await expect(
+      goodConfigGate.handleConfirmedSpend('agent-contradict', spend, '0x2222222222222222222222222222222222222222')
+    ).rejects.toThrow(/contradicts env THROTTLE_TREASURY_ADDRESS/);
+  });
+
+  it('Phase 5: Fails loudly when KeeperHub API key is missing outside simulation mode', async () => {
+    const store = new ThrottleStore(':memory:');
+    const profile = createDefaultProfile('agent-no-kh-key', 'NoKeyAgent');
+    store.saveAgent(profile);
+
+    process.env.THROTTLE_TREASURY_ADDRESS = TEST_CONFIRMED_TREASURY;
+
+    const spend: ConfirmedSpendEvent = {
+      amount: '10000',
+      amountUsd: 0.01,
+      txHash: '0xmocknokey',
+      taskId: 'task-nokey',
+      timestamp: Date.now(),
+      tokenSymbol: 'USDC',
+    };
+
+    const gate = new SweepGate({
+      store,
+      // keeperHubApiKey omitted
+      sweepWorkflowId: 'wf-treasury-sweep',
+      treasuryAddress: TEST_CONFIRMED_TREASURY,
+      simulationMode: false,
+    });
+
+    const result = await gate.handleConfirmedSpend('agent-no-kh-key', spend);
+    expect(result.status).toBe('error');
+    expect(result.errorMessage).toContain('Missing required API key');
   });
 });
 

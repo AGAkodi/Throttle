@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { ThrottleStore, createDefaultProfile, AuthorityLevel } from '@throttle/controller';
-import { SignGate } from '@throttle/keeperhub-adapter';
 import { generateDynamicPolicyGroups } from '../src/dynamic-policy-groups.js';
 import { BehaviorEmitter } from '../src/behavior-emitter.js';
 import { TaskMarketAgent } from '../src/taskmarket-agent.js';
@@ -297,6 +296,71 @@ describe('Daydreams / TaskMarket Adapter', () => {
     const updatedProfile = store.getAgent('agent-creation-test');
     expect(updatedProfile?.metrics.totalActions).toBeGreaterThanOrEqual(1);
     expect(updatedProfile?.metrics.successfulActions).toBeGreaterThanOrEqual(1);
+  });
+
+  it('Phase 5: listOpenTasks surfaces network errors instead of returning an empty array', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new Error('ECONNREFUSED: TaskMarket service unreachable');
+    }) as any;
+
+    try {
+      const client = new TaskMarketClient('https://api.taskmarket.dev');
+      await expect(client.listOpenTasks()).rejects.toThrow(/TaskMarket service unreachable/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('Phase 5: createAndSettleTask fails loudly on non-retryable 409 conflict', async () => {
+    const originalFetch = globalThis.fetch;
+    const testPrivateKey = '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f361b97';
+    let callCount = 0;
+
+    globalThis.fetch = (async (url: string) => {
+      callCount++;
+      if (callCount === 1) {
+        // Round 1: return 402 challenge
+        return new Response(
+          JSON.stringify({
+            x402Version: 2,
+            resource: '/api/tasks',
+            accepts: [
+              {
+                network: 'base',
+                asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+                payTo: '0x1234567890123456789012345678901234567890',
+                amount: '10000',
+                maxTimeoutSeconds: 300,
+                extra: { name: 'USD Coin', version: '2', chainId: 8453 },
+              },
+            ],
+          }),
+          { status: 402, headers: { 'Content-Type': 'application/json' } }
+        );
+      } else {
+        // Round 2: return 409 with payment_already_spent
+        return new Response(
+          JSON.stringify({
+            error: 'Conflict',
+            taskmarket: { reason: 'payment_already_spent' },
+          }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    }) as any;
+
+    try {
+      const client = new TaskMarketClient('https://api.taskmarket.dev');
+      await expect(
+        client.createAndSettleTask({
+          privateKey: testPrivateKey,
+          reward: '10000',
+        })
+      ).rejects.toThrow(/non-retryable HTTP 409 conflict \(payment_already_spent\)/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

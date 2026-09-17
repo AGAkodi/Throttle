@@ -185,4 +185,36 @@ describe('Reliability Scenarios (TODO Phase 5 Integration Suites)', () => {
     expect(profile.currentAuthorityLevel).toBeLessThan(AuthorityLevel.RESTRICTED);
     expect(profile.trustScore.current).toBeGreaterThan(40);
   });
+
+  // Scenario 6: Transition into Level 3 (Restricted Mode) immediately enforces the restricted spend cap
+  it('Scenario 6: Level 3 transition re-evaluation rejects action exceeding restricted spend cap', () => {
+    let profile = createDefaultProfile('agent-scenario-6', 'Level3TransitionAgent', {
+      maxSingleTransferUsd: 40.0,
+      restrictedMultiplier: 0.25, // 10.0 USD limit when in restricted mode
+    });
+    // Start at Level 1 (Logged Autonomy)
+    profile.currentAuthorityLevel = AuthorityLevel.LOGGED;
+    // Depress trust score to 40 so that authority engine targets Level 3 RESTRICTED
+    profile.trustScore.current = 40;
+
+    const transitionalAction: ProposedAction = {
+      id: 'act-transitional-oversized',
+      agentId: profile.agentId,
+      timestamp: Date.now(),
+      type: 'payment',
+      chain: 'base',
+      protocol: 'taskmarket',
+      destination: '0x1234567890123456789012345678901234567890',
+      amount: '15000000',
+      amountUsd: 15.0,
+      tokenSymbol: 'USDC',
+    };
+
+    const { decision, updatedProfile } = evaluateAndUpdateProfile(transitionalAction, profile);
+    expect(decision.authorityLevel).toBe(AuthorityLevel.RESTRICTED);
+    expect(decision.levelChanged).toBe(true);
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain('transition to Restricted Mode (Level 3) enforces restricted spend cap');
+    expect(updatedProfile.currentAuthorityLevel).toBe(AuthorityLevel.RESTRICTED);
+  });
 });

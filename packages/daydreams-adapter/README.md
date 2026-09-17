@@ -1,13 +1,20 @@
 # @throttle/daydreams-adapter
 
-Daydreams and TaskMarket raw-REST adapter featuring dynamic policy groups, behavior telemetry emitter, and Gate 2 SignGate interception before KeeperHub Turnkey-backed signing.
+Daydreams and TaskMarket adapter providing autonomous task creation, EIP-3009 payment challenge settlement, behavioral telemetry emission, and ConfirmedSpend event generation for Throttle dynamic autonomy gating and downstream KeeperHub sweeps.
 
-## Architecture
+## Architecture & Flow
 
-- **`TaskMarketAgent`**: Autonomous agent loop executing task discovery, client-side dynamic policy group gating, claim initiation, 402 payment challenge interception, SignGate authorization, and settlement.
-- **`TaskMarketClient`**: Raw-REST client interacting directly with `api.taskmarket.dev` for task listing and claim settlement.
-- **`DynamicPolicyGroups`**: Maps Controller Level 0–5 autonomy states into client-side spending thresholds and execution policy bounds.
-- **`BehaviorEmitter`**: Telemetry emitter recording agent action attempts, retries, and successes into the Controller store.
+1. **Autonomous Task Creation (Leg 1):** `TaskMarketAgent` creates tasks on TaskMarket (`POST /api/tasks`) in claim/bounty mode.
+2. **EIP-3009 Escrow Settlement:** Encounters an authentic HTTP 402 Payment Required challenge and settles the escrow funding directly via agent operating wallet private key (`AGENT_WALLET_PRIVATE_KEY`).
+3. **ConfirmedSpend Telemetry Trigger:** Upon on-chain transaction settlement on Base Mainnet, the adapter emits a `ConfirmedSpendEvent` containing the verified transaction hash, atomic spend amount, and created task ID.
+4. **Throttle Sweep Gating (Leg 2):** The `ConfirmedSpend` event enters Throttle Controller's 5-layer pipeline to gate KeeperHub-executed Turnkey treasury sweeps (`SweepGate`).
+
+## Components
+
+- **`TaskMarketAgent`**: Autonomous agent executing `runTaskCreationCycle()`, handling HTTP 402 challenges, signing EIP-3009 authorizations, and emitting `ConfirmedSpend` events.
+- **`TaskMarketClient`**: REST client interacting with `api.taskmarket.dev` for task creation, 402 challenge negotiation, and payment retries.
+- **`DynamicPolicyGroups`**: Maps Controller Level 0–5 autonomy states into client-side spending bounds and policy constraints.
+- **`BehaviorEmitter`**: Records agent lifecycle events (attempts, retries, failures) into the Controller store.
 
 ## Testing
 

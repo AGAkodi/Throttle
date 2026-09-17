@@ -4,7 +4,7 @@
  * based on Throttle's real-time AuthorityLevel, risk score, and trust score.
  *
  * NOTE: This is a SECONDARY, coarser client-side filter.
- * The authoritative payment gate is `sign-gate.ts` inside packages/keeperhub-adapter.
+ * The authoritative gate for the live architecture is `sweep-gate.ts` inside packages/keeperhub-adapter.
  */
 
 import { AuthorityLevel, AgentProfile } from '@throttle/controller';

@@ -164,22 +164,18 @@ export class TaskMarketClient {
    * Fetches open tasks available on TaskMarket.
    */
   public async listOpenTasks(): Promise<TaskMarketTask[]> {
-    try {
-      const res = await fetch(`${this.baseUrl}/api/tasks`, {
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
+    const res = await fetch(`${this.baseUrl}/api/tasks`, {
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
 
-      if (!res.ok) {
-        return [];
-      }
-
-      const data = await res.json() as any;
-      return Array.isArray(data) ? data : (data.tasks || []);
-    } catch {
-      return [];
+    if (!res.ok) {
+      throw new Error(`Failed to list open tasks from TaskMarket: HTTP ${res.status} ${res.statusText}`);
     }
+
+    const data = await res.json() as any;
+    return Array.isArray(data) ? data : (data.tasks || []);
   }
 
   /**
@@ -255,7 +251,7 @@ export class TaskMarketClient {
 
     const taskPayload = {
       description: params.description || 'Autonomous claim task for Throttle dynamic autonomy pipeline verification',
-      reward: params.reward,
+      // Task duration in seconds (defaults to 86400 = 24 hours, confirmed on-chain on TaskMarket)
       duration: params.duration ?? 86400,
       tags: params.tags ?? ['throttle-verification', 'claim-mode'],
       mode: params.mode ?? 'claim',
@@ -369,6 +365,19 @@ export class TaskMarketClient {
     });
 
     if (createRes.status === 409) {
+      const conflictBody = (await createRes.json().catch(() => ({}))) as any;
+      const conflictReason = conflictBody?.taskmarket?.reason || conflictBody?.reason || '';
+
+      // Non-retryable conflicts fail loudly immediately rather than hanging in polling loop
+      if (
+        conflictReason === 'idempotency_key_payload_mismatch' ||
+        conflictReason === 'payment_already_spent'
+      ) {
+        throw new Error(
+          `Task creation failed with non-retryable HTTP 409 conflict (${conflictReason}): ${JSON.stringify(conflictBody)}`
+        );
+      }
+
       // In-flight paid write: poll intent by idempotency key
       const pollResult = await this.waitForIntentTerminalByIdempotencyKey(idempotencyKey);
       return {
@@ -414,7 +423,13 @@ export class TaskMarketClient {
               throw new Error(`Intent reached terminal state 'failed': ${intent.terminalReason || 'unknown'}`);
             }
           } catch (err: any) {
-            if (err.message?.includes('reached terminal state')) throw err;
+            if (
+              err.message?.includes('reached terminal state') ||
+              err.message?.includes('HTTP 401') ||
+              err.message?.includes('HTTP 403')
+            ) {
+              throw err;
+            }
           }
         }
 
@@ -498,7 +513,13 @@ export class TaskMarketClient {
           throw new Error(`Intent ${intentId} reached terminal state 'failed': ${intent.terminalReason || 'unknown'}`);
         }
       } catch (err: any) {
-        if (err.message?.includes('reached terminal state')) throw err;
+        if (
+          err.message?.includes('reached terminal state') ||
+          err.message?.includes('HTTP 401') ||
+          err.message?.includes('HTTP 403')
+        ) {
+          throw err;
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
@@ -524,7 +545,13 @@ export class TaskMarketClient {
           throw new Error(`Intent for idempotency key ${idempotencyKey} reached terminal state 'failed': ${intent.terminalReason || 'unknown'}`);
         }
       } catch (err: any) {
-        if (err.message?.includes('reached terminal state')) throw err;
+        if (
+          err.message?.includes('reached terminal state') ||
+          err.message?.includes('HTTP 401') ||
+          err.message?.includes('HTTP 403')
+        ) {
+          throw err;
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }

@@ -5,7 +5,6 @@
  */
 
 import { ThrottleStore, AgentProfile } from '@throttle/controller';
-import { SignGate, X402ChallengePayload } from '@throttle/keeperhub-adapter';
 import {
   TaskMarketClient,
   TaskMarketTask,
@@ -24,7 +23,6 @@ export interface TaskMarketAgentConfig {
   store: ThrottleStore;
   client: TaskMarketClient;
   agentPrivateKey?: string;
-  signGate?: SignGate;
 }
 
 export interface TaskExecutionResult {
@@ -51,11 +49,10 @@ export class TaskMarketAgent {
   }
 
   /**
-   * Executes an autonomous cycle:
-   * 1. Fetches open tasks
-   * 2. Checks client-side dynamic policy groups
-   * 3. Signs canonical EIP-191 claim message "taskmarket:claim:<taskId>"
-   * 4. Submits claim directly in a single request (no 402 challenge handshake)
+   * LEGACY / SUPERSEDED:
+   * runCycle() implements the original task claim flow investigated early in development.
+   * This path is unused in the active two-leg architecture (which uses runTaskCreationCycle()).
+   * Kept for reference only.
    */
   public async runCycle(): Promise<TaskExecutionResult> {
     const { agentId, workerAddress, store, client } = this.config;
@@ -168,6 +165,10 @@ export class TaskMarketAgent {
     }
 
     const claimId = claimResult.claimId || claimResult.data?.claimId || candidateTask.id;
+    // LEGACY / SUPERSEDED NOTE:
+    // TaskMarket claim response returns a claimId; on-chain worker settlement happens asynchronously upon task acceptance.
+    // In this legacy exploratory claim path, claimId is retained as fallback reference.
+    // The active live path (runTaskCreationCycle) does NOT use this fallback and receives verified on-chain transaction hashes.
     const txHash =
       claimResult.data?.txHash ||
       claimResult.data?.transactionHash ||

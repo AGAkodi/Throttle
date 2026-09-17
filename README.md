@@ -2,13 +2,25 @@
 
 **Hackathon:** KeeperHub x DoraHacks — Main Track: *"Best Integration into a Live Project"*  
 **Live Project Integrated:** [Daydreams](https://github.com/daydreamsai/daydreams) (`lucid-agents` + [TaskMarket](https://taskmarket.dev))  
-**Execution Layer:** [KeeperHub](https://keeperhub.com) (`PreToolUse` hook + `/api/agentic-wallet/sign` gate + Turnkey spend limits floor)
+**Execution Layer:** [KeeperHub](https://keeperhub.com) (`PreToolUse` hook + Workflow Execution Engine (`POST /api/workflows/{id}/execute`) + Turnkey-backed organization treasury sweeps)
 
 ---
 
 ## One-Line Pitch
 
-An external Dynamic Autonomy Controller that continuously scores a long-running Daydreams agent's risk, trust, and behavioral drift, and dynamically throttles its authority — from full autonomy down to human-approval-required or frozen — before any x402 payment is signed by KeeperHub's Turnkey-backed wallet.
+An external Dynamic Autonomy Controller that continuously scores a long-running Daydreams agent's risk, trust, and behavioral drift, and dynamically throttles its authority — from full autonomy down to human-approval-required or frozen — gating downstream Turnkey-signed treasury sweeps executed via KeeperHub workflows upon confirmed agent operational spend on TaskMarket.
+
+---
+
+## Architecture Note & Pivot
+
+> **Honest Architecture Pivot:**  
+> The project's exploratory design initially considered using KeeperHub's `/api/agentic-wallet/sign` endpoint to sign outbound TaskMarket HTTP 402 payment challenges directly. During live API investigation, we confirmed that `/api/agentic-wallet/sign` requires an internal KeeperHub `workflowSlug` and derives `payTo` and `amount` strictly from that workflow's own registered wallet and marketplace price — it cannot sign payments to arbitrary third-party contracts like TaskMarket.  
+> 
+> Rather than fabricating a payment or relying on an artificial mock, we implemented a principled, authentic **Two-Leg Architecture**:
+> - **Leg 1 (TaskMarket Task Creation Escrow — Agent-Signed):** The agent pays TaskMarket directly via an EIP-3009 `TransferWithAuthorization` signature using its operating wallet key (`AGENT_WALLET_PRIVATE_KEY`) in response to an authentic HTTP 402 challenge. KeeperHub is not involved in signing this third-party payment.
+> - **Trigger:** Confirmed on-chain escrow funding emits a `ConfirmedSpend` event containing the verified transaction hash, atomic spend amount, and created task ID.
+> - **Leg 2 (Treasury Sweep — Throttle-Gated & KeeperHub-Executed):** Throttle's 5-layer pipeline evaluates the `ConfirmedSpend` event. If authorized, Throttle triggers KeeperHub's workflow execution engine (`POST /api/workflows/{id}/execute`) to execute an on-chain ERC-20 USDC sweep from the organization Turnkey wallet into the configured treasury.
 
 ---
 
@@ -16,55 +28,49 @@ An external Dynamic Autonomy Controller that continuously scores a long-running 
 
 ```
 +-----------------------------------------------------------------------------------+
-|                              DAYDREAMS AGENT LOOP                                |
-|  - Agent runs long-horizon autonomous tasks                                      |
-|  - Proposes tool calls & encounters HTTP 402 payment challenges on TaskMarket   |
+|                              LEG 1: DAYDREAMS AGENT                               |
+|  - Agent runs autonomous task creation cycle on TaskMarket (Base Mainnet)         |
+|  - Encounters HTTP 402 Payment Required challenge for task escrow funding        |
+|  - Agent signs EIP-3009 TransferWithAuthorization directly via operating wallet  |
 +----------------------------------------+------------------------------------------+
                                          |
                                          v
 +-----------------------------------------------------------------------------------+
-|                       GATE 1: PreToolUse Coarse Hook                             |
-|  - Intercepts before tool execution (action type, tool name)                      |
-|  - Evaluates initial policy & baseline check                                      |
+|                              TRIGGER: CONFIRMED SPEND                             |
+|  - Task escrow payment settles on-chain on Base Mainnet                           |
+|  - Emits ConfirmedSpend event (txHash, amountUsd, taskId, tokenSymbol)            |
 +----------------------------------------+------------------------------------------+
                                          |
                                          v
 +-----------------------------------------------------------------------------------+
-|                 TASKMARKET 402 CHALLENGE (Real Payment Shape)                     |
-|  - PayTo, Amount (USDC on Base), ValidBefore, Nonce                               |
-+----------------------------------------+------------------------------------------+
-                                         |
-                                         v
-+-----------------------------------------------------------------------------------+
-|               GATE 2: Sign-Gate (Fine-Grained Dynamic Autonomy)                  |
-|  - Intercepts calls to POST /api/agentic-wallet/sign                             |
-|  - Evaluates complete 5-layer Controller Core:                                    |
-|      1. Policy Engine (deterministic hard spend & target rules)                   |
-|      2. Risk Engine (0-100 score + labeled factor breakdown)                      |
-|      3. Drift Detector (compares current action against agent baseline)           |
-|      4. Trust Engine (time-decayed weighted model, not a simple counter)         |
-|      5. Authority Engine -> Maps to one of 6 distinct Authority Levels:          |
-|         Level 0: Full Autonomy                                                    |
-|         Level 1: Logged Autonomy                                                  |
-|         Level 2: Enhanced Monitoring                                              |
-|         Level 3: Restricted Scope                                                 |
-|         Level 4: Human Approval Required                                          |
-|         Level 5: Frozen (Denied)                                                  |
+|                      THROTTLE CONTROLLER: 5-LAYER PIPELINE                        |
+|  Evaluates ConfirmedSpend telemetry:                                              |
+|      1. Policy Engine (deterministic spending limits & transfer caps)             |
+|      2. Risk Engine (0-100 composite risk score + labeled factors)                |
+|      3. Drift Detector (detects anomalies vs. agent historical baseline)          |
+|      4. Trust Engine (time-decayed Bayesian/weighted trust score)                 |
+|      5. Authority Engine -> Resolves dynamic Authority Level:                     |
+|         Level 0: Full Autonomy    | Level 3: Restricted Scope                     |
+|         Level 1: Logged Autonomy  | Level 4: Human Approval Required (Hold)       |
+|         Level 2: Monitoring       | Level 5: Frozen (Reject)                      |
 +----------------------------------------+------------------------------------------+
                                          |
                  +-----------------------+-----------------------+
-                 | ALLOW / MONITOR                               | REJECT / FREEZE
+                 | ALLOW / MONITOR                               | REJECT / HOLD
                  v                                               v
 +----------------------------------+            +----------------------------------+
-|      KEEPERHUB SIGNER            |            |        PAYMENT BLOCKED           |
-|  - Turnkey hard limit floor      |            |  - Action recorded in audit log  |
-|  - EIP-3009 signature generated  |            |  - Drift / violation penalized   |
-+----------------+-----------------+            +----------------------------------+
+|   KEEPERHUB WORKFLOW EXECUTION   |            |         SWEEP GATED / HELD       |
+|  - Preflight simulation dry run  |            |  - Level 4: Action held pending  |
+|  - Turnkey org wallet sweep      |            |  - Level 5: Sweep rejected       |
+|  - Transfer ERC-20 to treasury   |            |  - Drift / violations penalized  |
+|  - Immutable hardware spend cap  |            +----------------------------------+
++----------------+-----------------+
                  |
                  v
 +-----------------------------------------------------------------------------------+
-|                          TASKMARKET SETTLEMENT                                    |
-|  - Retried with PAYMENT-SIGNATURE header -> Real Base Mainnet Transaction         |
+|                            LEG 2: ON-CHAIN TREASURY SWEEP                         |
+|  - Verified transaction hash confirmed on BaseScan                                |
+|  - Completed audit record persisted in Throttle Controller store                  |
 +-----------------------------------------------------------------------------------+
 ```
 
@@ -75,7 +81,7 @@ An external Dynamic Autonomy Controller that continuously scores a long-running 
 1. **The agent proposes. The controller authorizes. KeeperHub executes.**
 2. **The controller is deterministic, not an LLM.** Decisions are reproducible from identical inputs.
 3. **The agent must never influence its own authority.** Signals come only from server-side state and independently observed fields (GUARD-05 discipline).
-4. **Dual independent interception points:** Coarse `PreToolUse` hook + fine-grained `/api/agentic-wallet/sign` gate.
+4. **Dual independent interception points:** Coarse `PreToolUse` hook + fine-grained `SweepGate` / Controller evaluation.
 5. **KeeperHub's Turnkey hard limits remain the final safety floor.**
 
 ---
@@ -83,7 +89,7 @@ An external Dynamic Autonomy Controller that continuously scores a long-running 
 ## Packages
 
 - **`packages/controller`**: Framework-agnostic dynamic autonomy engine (policy, risk, drift, trust, authority, SQLite persistence).
-- **`packages/keeperhub-adapter`**: PreToolUse hook, sign gate wrapper, decision mapper, and MCP client.
+- **`packages/keeperhub-adapter`**: PreToolUse hook, sweep gate (`sweep-gate.ts`), legacy sign gate (`sign-gate.ts`), decision mapper, and MCP client.
 - **`packages/daydreams-adapter`**: TaskMarket raw-REST client, dynamic policy groups, behavior emitter, and demo agent.
 - **`packages/dashboard`**: Vite + React + React Router explainability UI.
 

@@ -4,7 +4,7 @@
  * ZERO LLM calls: pure function mapping (ProposedAction, AgentProfile) -> Decision.
  */
 
-import { ProposedAction, AgentProfile, Decision } from './types.js';
+import { ProposedAction, AgentProfile, Decision, AuthorityLevel } from './types.js';
 import { evaluatePolicy } from './engines/policy-engine.js';
 import { evaluateRisk } from './engines/risk-engine.js';
 import { detectDrift } from './engines/drift-detector.js';
@@ -42,19 +42,42 @@ export function evaluate(action: ProposedAction, profile: AgentProfile): Decisio
     trustResult.updatedScore.current
   );
 
+  // Layer 5.1: Post-transition policy re-evaluation for Level 3 (Restricted Mode)
+  let effectivePolicyEval = policyEval;
+  let finalAllowed = authorityDecision.allowed;
+  let finalRequiresApproval = authorityDecision.requiresApproval;
+  let finalReason = authorityDecision.reason;
+
+  if (
+    authorityDecision.authorityLevel === AuthorityLevel.RESTRICTED &&
+    profile.currentAuthorityLevel !== AuthorityLevel.RESTRICTED
+  ) {
+    const postTransitionProfile: AgentProfile = {
+      ...profile,
+      currentAuthorityLevel: AuthorityLevel.RESTRICTED,
+    };
+    const postTransitionPolicyEval = evaluatePolicy(action, postTransitionProfile);
+    if (!postTransitionPolicyEval.passed) {
+      effectivePolicyEval = postTransitionPolicyEval;
+      finalAllowed = false;
+      finalRequiresApproval = false;
+      finalReason = `Action disallowed: transition to Restricted Mode (Level 3) enforces restricted spend cap: ${postTransitionPolicyEval.violations.join('; ')}`;
+    }
+  }
+
   const decision: Decision = {
     id: `dec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     actionId: action.id,
     agentId: action.agentId,
     timestamp: action.timestamp || Date.now(),
-    allowed: authorityDecision.allowed,
-    requiresApproval: authorityDecision.requiresApproval,
+    allowed: finalAllowed,
+    requiresApproval: finalRequiresApproval,
     isFrozen: authorityDecision.isFrozen,
     authorityLevel: authorityDecision.authorityLevel,
     previousAuthorityLevel: authorityDecision.previousAuthorityLevel,
     levelChanged: authorityDecision.levelChanged,
-    reason: authorityDecision.reason,
-    policyEvaluation: policyEval,
+    reason: finalReason,
+    policyEvaluation: effectivePolicyEval,
     riskAssessment,
     driftSignals,
     trustScore: trustResult.updatedScore.current,
@@ -85,19 +108,42 @@ export function evaluateAndUpdateProfile(action: ProposedAction, profile: AgentP
     trustResult.updatedScore.current
   );
 
+  // Layer 5.1: Post-transition policy re-evaluation for Level 3 (Restricted Mode)
+  let effectivePolicyEval = policyEval;
+  let finalAllowed = authorityDecision.allowed;
+  let finalRequiresApproval = authorityDecision.requiresApproval;
+  let finalReason = authorityDecision.reason;
+
+  if (
+    authorityDecision.authorityLevel === AuthorityLevel.RESTRICTED &&
+    profile.currentAuthorityLevel !== AuthorityLevel.RESTRICTED
+  ) {
+    const postTransitionProfile: AgentProfile = {
+      ...profile,
+      currentAuthorityLevel: AuthorityLevel.RESTRICTED,
+    };
+    const postTransitionPolicyEval = evaluatePolicy(action, postTransitionProfile);
+    if (!postTransitionPolicyEval.passed) {
+      effectivePolicyEval = postTransitionPolicyEval;
+      finalAllowed = false;
+      finalRequiresApproval = false;
+      finalReason = `Action disallowed: transition to Restricted Mode (Level 3) enforces restricted spend cap: ${postTransitionPolicyEval.violations.join('; ')}`;
+    }
+  }
+
   const decision: Decision = {
     id: `dec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     actionId: action.id,
     agentId: action.agentId,
     timestamp: action.timestamp || Date.now(),
-    allowed: authorityDecision.allowed,
-    requiresApproval: authorityDecision.requiresApproval,
+    allowed: finalAllowed,
+    requiresApproval: finalRequiresApproval,
     isFrozen: authorityDecision.isFrozen,
     authorityLevel: authorityDecision.authorityLevel,
     previousAuthorityLevel: authorityDecision.previousAuthorityLevel,
     levelChanged: authorityDecision.levelChanged,
-    reason: authorityDecision.reason,
-    policyEvaluation: policyEval,
+    reason: finalReason,
+    policyEvaluation: effectivePolicyEval,
     riskAssessment,
     driftSignals,
     trustScore: trustResult.updatedScore.current,

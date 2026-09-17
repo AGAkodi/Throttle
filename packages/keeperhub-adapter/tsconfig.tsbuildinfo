@@ -1,1 +1,1 @@
-{"root":["./src/decision-mapper.ts","./src/index.ts","./src/mcp-client.ts","./src/pretooluse-hook.ts","./src/settings-installer.ts","./src/sign-gate.ts","./src/sweep-gate.ts"],"version":"5.9.3"}
+{"root":["./src/decision-mapper.ts","./src/index.ts","./src/mcp-client.ts","./src/pretooluse-hook.ts","./src/settings-installer.ts","./src/sweep-gate.ts"],"version":"5.9.3"}
